@@ -1,7 +1,7 @@
 /**
  * Hubitat Device Driver
  * Mitsubishi Heat Pump + MQTT
- * v1.0
+ * v1.1
  * https://github.com/sethkinast/hubitat-mitsubishi-mqtt/
  *
  * Control Mitsubishi heat pumps using HeatPump.cpp via MQTT
@@ -67,6 +67,8 @@ import groovy.json.JsonOutput
     '4': 'high',
     'AUTO': 'auto'
 ]
+@Field static List vanePositions = ['AUTO', '1', '2', '3', '4', '5', 'SWING']
+@Field static List wideVanePositions = ['<<', '<', '|', '>', '>>', '<>', 'SWING']
 
 metadata {
     definition(
@@ -80,7 +82,12 @@ metadata {
         capability 'Initialize'
         capability 'Thermostat'
 
+        attribute 'vane', 'enum', vanePositions
+        attribute 'wideVane', 'enum', wideVanePositions
+
         command 'dry'
+        command 'vane', [[name: 'Position*', type: 'ENUM', constraints: vanePositions]]
+        command 'wideVane', [[name: 'Position*', type: 'ENUM', constraints: wideVanePositions]]
     }
 }
 
@@ -118,6 +125,8 @@ void configure() {
     sendEvent(name: 'supportedThermostatFanModes', value: supportedThermostatFanModes)
     sendEvent(name: 'supportedThermostatModes', value: supportedThermostatModes)
     sendEvent(name: 'thermostatOperatingState', value: 'idle')
+    sendEvent(name: 'vane', value: 'AUTO')
+    sendEvent(name: 'wideVane', value: '|')
 }
 
 void updated() {
@@ -261,6 +270,16 @@ void off() { setThermostatMode('off') }
 void fanAuto() { setThermostatFanMode('auto') }
 void fanCirculate() { setThermostatFanMode('circulate') }
 void fanOn() { setThermostatFanMode('on') }
+
+void vane(String position) {
+    sendEvent([name: 'vane', value: position])
+    publish(['vane': position])
+}
+
+void wideVane(String position) {
+    sendEvent([name: 'wideVane', value: position])
+    publish(['wideVane': position])
+}
 
 void setCoolingSetpoint(BigDecimal setpoint) {
     sendEvent([name: 'coolingSetpoint', value: setpoint, unit: getTemperatureUnit()])
