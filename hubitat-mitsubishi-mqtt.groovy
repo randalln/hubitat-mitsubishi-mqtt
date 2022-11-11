@@ -1,7 +1,7 @@
 /**
  * Hubitat Device Driver
  * Mitsubishi Heat Pump + MQTT
- * v1.1
+ * v1.1.1
  * https://github.com/sethkinast/hubitat-mitsubishi-mqtt/
  *
  * Control Mitsubishi heat pumps using HeatPump.cpp via MQTT
@@ -110,7 +110,9 @@ void initialize() {
         configure()
     }
 
+    state.remove('connectDelay')
     connect()
+
     if (debugLoggingEnabled) {
         runIn(3600, disableDebugLogging)
     }
@@ -375,14 +377,9 @@ void connect() {
 
 void reconnect() {
     state.connectDelay = state.connectDelay ?: 0
-    state.connectDelay++
+    state.connectDelay = Math.min(state.connectDelay + 1, 5)
 
     runIn(state.connectDelay * 60, connect)
-}
-
-void disconnect() {
-    unsubscribe()
-    interfaces.mqtt.disconnect()
 }
 
 void publish(Map command) {
@@ -396,15 +393,12 @@ void subscribe() {
     interfaces.mqtt.subscribe(getStatusTopic())
 }
 
-void unsubscribe() {
-    interfaces.mqtt.unsubscribe(topicRoot)
-    interfaces.mqtt.unsubscribe(getStatusTopic())
-}
-
 void mqttClientStatus(String status) {
     logDebug status
     if (status.startsWith('Error')) {
-        disconnect()
+        try {
+           interfaces.mqtt.disconnect()
+        } catch (e) {}
         reconnect()
     } else {
         state.remove('connectDelay')
