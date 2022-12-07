@@ -1,7 +1,7 @@
 /**
  * Hubitat Device Driver
  * Mitsubishi Heat Pump + MQTT
- * v1.1.1
+ * v1.1.2
  * https://github.com/sethkinast/hubitat-mitsubishi-mqtt/
  *
  * Control Mitsubishi heat pumps using HeatPump.cpp via MQTT
@@ -124,8 +124,8 @@ void configure() {
     sendEvent(name: 'thermostatSetpoint', value: convertTemperatureIfNeeded(70.0, 'F', 1), unit: getTemperatureUnit())
     sendEvent(name: 'heatingSetpoint', value: convertTemperatureIfNeeded(70.0, 'F', 1), unit: getTemperatureUnit())
     sendEvent(name: 'coolingSetpoint', value: convertTemperatureIfNeeded(70.0, 'F', 1), unit: getTemperatureUnit())
-    sendEvent(name: 'supportedThermostatFanModes', value: supportedThermostatFanModes)
-    sendEvent(name: 'supportedThermostatModes', value: supportedThermostatModes)
+    sendEvent(name: 'supportedThermostatFanModes', value: JsonOutput.toJson(supportedThermostatFanModes))
+    sendEvent(name: 'supportedThermostatModes', value: JsonOutput.toJson(supportedThermostatModes))
     sendEvent(name: 'thermostatOperatingState', value: 'idle')
     sendEvent(name: 'vane', value: 'AUTO')
     sendEvent(name: 'wideVane', value: '|')
