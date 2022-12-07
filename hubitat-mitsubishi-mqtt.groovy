@@ -34,8 +34,8 @@ import groovy.transform.Field
 import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 
-@Field static List<String> supportedThermostatFanModes = ['1', '2', '3', '4', 'auto', 'quiet']
-@Field static List<String> supportedThermostatModes = ['heat', 'cool', 'fan', 'dry', 'auto', 'off']
+@Field static List<String> supportedThermostatFanModes = ['auto', 'quiet', '1', '2', '3', '4']
+@Field static List<String> supportedThermostatModes = ['auto', 'off', 'cool', 'heat', 'fan', 'dry']
 
 @Field static Map thermostatModeMapping = [
     'HEAT': 'heat',
@@ -84,6 +84,9 @@ metadata {
 
         attribute 'vane', 'enum', vanePositions
         attribute 'wideVane', 'enum', wideVanePositions
+
+        command 'setThermostatFanMode', [[name: 'Set Thermostat Fan Mode', type: 'ENUM', constraints: supportedThermostatFanModes]]
+        command 'setThermostatMode', [[name: 'Set Thermostat Mode', type: 'ENUM', constraints: supportedThermostatModes]]
 
         command 'dry'
         command 'vane', [[name: 'Position*', type: 'ENUM', constraints: vanePositions]]
