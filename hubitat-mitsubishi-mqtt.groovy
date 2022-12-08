@@ -1,7 +1,7 @@
 /**
  * Hubitat Device Driver
  * Mitsubishi Heat Pump + MQTT
- * v1.1.2
+ * v1.1.3
  * https://github.com/sethkinast/hubitat-mitsubishi-mqtt/
  *
  * Control Mitsubishi heat pumps using HeatPump.cpp via MQTT
@@ -80,6 +80,7 @@ metadata {
     ) {
         capability 'Configuration'
         capability 'Initialize'
+        capability 'TemperatureMeasurement'
         capability 'Thermostat'
 
         attribute 'vane', 'enum', vanePositions
