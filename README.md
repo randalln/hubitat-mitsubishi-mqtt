@@ -19,7 +19,7 @@ This driver is designed to work with [mitsubishi_heatpump_mqtt_esp8266_esp32](ht
 
 ## Installation
 
-1. Add this device driver to Hubitat by going to **Drivers Code -> New Driver -> Import** and pasting [this importURL](https://raw.githubusercontent.com/sethkinast/hubitat-mitsubishi-mqtt/master/hubitat-mitsubishi-mqtt.groovy).
+1. Add this device driver to Hubitat by going to **Drivers Code -> New Driver -> Import** and pasting [this importURL](https://raw.githubusercontent.com/randalln/hubitat-mitsubishi-mqtt/master/hubitat-mitsubishi-mqtt.groovy).
 2. Create a new Virtual Device by going to **Devices -> Add Device -> Virtual** and set the driver to `Mitsubishi Heat Pump + MQTT`.
 3. Edit the device and add the IP address of your MQTT broker and the heatpump topic you configured in the Arduino sketch.
 4. Check the device logs and you should see temperature reports being received and status updates flowing.
