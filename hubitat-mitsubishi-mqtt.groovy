@@ -72,7 +72,7 @@ import groovy.json.JsonOutput
 
 metadata {
     definition(
-        name: 'Mitsubishi Heat Pump + MQTT',
+        name: 'Mitsubishi Heat Pump MQTT',
         namespace: 'cogdev',
         author: 'Seth Kinast <seth@cogdev.net>',
         importUrl:
