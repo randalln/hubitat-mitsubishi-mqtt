@@ -9,6 +9,7 @@ This driver is designed to work with [mitsubishi_heatpump_mqtt_esp8266_esp32](ht
 - Can detect when the heatpumps are actively heating/cooling and update Hubitat Dashboard
 - Reports room temperature back from the heatpump for use in automations
 - Supports all heatpump modes and fan speeds
+- Supports remote temperature (because internal heat pump sensors can be inaccurate)
 
 ## Prerequisites
 
