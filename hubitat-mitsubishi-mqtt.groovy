@@ -1,7 +1,7 @@
 /**
  * Hubitat Device Driver
  * Mitsubishi Heat Pump + MQTT
- * v1.1.3
+ * v1.1.4
  * https://github.com/sethkinast/hubitat-mitsubishi-mqtt/
  *
  * Control Mitsubishi heat pumps using HeatPump.cpp via MQTT
@@ -85,6 +85,7 @@ metadata {
 
         attribute 'vane', 'enum', vanePositions
         attribute 'wideVane', 'enum', wideVanePositions
+        attribute 'remoteTemperature', 'number'
 
         command 'setThermostatFanMode', [[name: 'Set Thermostat Fan Mode', type: 'ENUM', constraints: supportedThermostatFanModes]]
         command 'setThermostatMode', [[name: 'Set Thermostat Mode', type: 'ENUM', constraints: supportedThermostatModes]]
@@ -92,6 +93,8 @@ metadata {
         command 'dry'
         command 'vane', [[name: 'Position*', type: 'ENUM', constraints: vanePositions]]
         command 'wideVane', [[name: 'Position*', type: 'ENUM', constraints: wideVanePositions]]
+        command 'setRemoteTemperature',
+                [[name: "Temperature ${getTemperatureUnit()} (0 for internal sensor)", type: 'NUMBER']]
     }
 }
 
@@ -118,7 +121,7 @@ void initialize() {
     connect()
 
     if (debugLoggingEnabled) {
-        runIn(3600, disableDebugLogging)
+        runIn(7200, disableDebugLogging)
     }
 }
 
@@ -163,9 +166,7 @@ void parse(String message) {
 }
 
 List processTemperatureUpdate(Map payload) {
-    BigDecimal temperature = Math.round(
-        new BigDecimal(convertTemperatureIfNeeded(payload.roomTemperature, 'C', 1))
-    )
+    BigDecimal temperature = new BigDecimal(convertTemperatureIfNeeded(payload.roomTemperature, 'C', 1))
     String currentMode = device.currentValue('thermostatMode')
     return [
         [
@@ -185,9 +186,7 @@ List processTemperatureUpdate(Map payload) {
 }
 
 List processOperatingUpdate(Map payload) {
-    BigDecimal temperature = Math.round(
-        new BigDecimal(convertTemperatureIfNeeded(payload.temperature, 'C', 1))
-    )
+    BigDecimal temperature = new BigDecimal(convertTemperatureIfNeeded(payload.temperature, 'C', 1))
     String mode = getThermostatMode(payload.power, payload.mode)
     String fanMode = getThermostatFanMode(payload.power, payload.fan)
 
@@ -253,7 +252,7 @@ BigDecimal getSetpointForMode(String mode) {
 BigDecimal convertInputToCelsius(BigDecimal inputTemperature) {
     return getTemperatureScale() == 'C' ?
         inputTemperature :
-        fahrenheitToCelsius(inputTemperature)
+        Math.round(fahrenheitToCelsius(inputTemperature) * 2) / 2.0
 }
 
 /* Commands */
@@ -310,6 +309,21 @@ void setHeatingSetpoint(BigDecimal setpoint) {
         publish(['temperature': convertInputToCelsius(setpoint)])
     } else {
         logDebug "Current mode is ${currentMode} so not publishing heatingSetpoint to ${setpoint}"
+    }
+}
+
+void setRemoteTemperature(BigDecimal temperature) {
+    if (temperature != null) {
+        BigDecimal remoteTemp = temperature == 0 ? 0 : convertInputToCelsius(temperature)
+        def thermostatOperatingState = device.currentValue('thermostatOperatingState')
+        // Add or subtract 0.5C while operating to actually get it to turn off closer to the desired setpoint
+        if (thermostatOperatingState == "heating") {
+            remoteTemp += 0.5
+        } else if (thermostatOperatingState == "cooling") {
+            remoteTemp -= 0.5
+        }
+        sendEvent([name: 'remoteTemperature', value: remoteTemp])
+        publish(['remoteTemp': remoteTemp])
     }
 }
 
