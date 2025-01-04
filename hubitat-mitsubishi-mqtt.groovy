@@ -30,9 +30,10 @@
  * SOFTWARE.
  */
 
-import groovy.transform.Field
-import groovy.json.JsonSlurper
+
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import groovy.transform.Field
 
 @Field static List<String> supportedThermostatFanModes = ['auto', 'quiet', '1', '2', '3', '4']
 @Field static List<String> supportedThermostatModes = ['auto', 'off', 'cool', 'heat', 'fan', 'dry']
@@ -314,13 +315,16 @@ void setHeatingSetpoint(BigDecimal setpoint) {
 
 void setRemoteTemperature(BigDecimal temperature) {
     if (temperature != null) {
+        // 0 tells the code on the HP to switch to the internal sensor
         BigDecimal remoteTemp = temperature == 0 ? 0 : convertInputToCelsius(temperature)
         def thermostatOperatingState = device.currentValue('thermostatOperatingState')
         // Add or subtract 0.5C while operating to actually get it to turn off closer to the desired setpoint
-        if (thermostatOperatingState == "heating") {
-            remoteTemp += 0.5
-        } else if (thermostatOperatingState == "cooling") {
-            remoteTemp -= 0.5
+        if (remoteTemp != 0) {
+            if (thermostatOperatingState == "heating") {
+                remoteTemp += 0.5
+            } else if (thermostatOperatingState == "cooling") {
+                remoteTemp -= 0.5
+            }
         }
         sendEvent([name: 'remoteTemperature', value: remoteTemp])
         publish(['remoteTemp': remoteTemp])
