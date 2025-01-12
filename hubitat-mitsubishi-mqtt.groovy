@@ -54,10 +54,10 @@ import groovy.transform.Field
 ]
 @Field static Map thermostatFanModeMapping = [
     'QUIET': 'circulate',
-    '1': 'on',
-    '2': 'on',
-    '3': 'on',
-    '4': 'on',
+    '1': '1',
+    '2': '2',
+    '3': '3',
+    '4': '4',
     'AUTO': 'auto'
 ]
 @Field static Map fanControlSpeedMapping = [
@@ -301,7 +301,7 @@ void setCoolingSetpoint(BigDecimal setpoint) {
 }
 
 void setHeatingSetpoint(BigDecimal setpoint) {
-    sendEvent([name: 'heatingSetpoint', value: setpoint, unit: getTemperatureUnit()])
+    sendEvent([name: 'heatingSetpoint', value: setpoint.floatValue(), unit: getTemperatureUnit()])
     String currentMode = device.currentValue('thermostatMode', true)
     if (
         ['pending heat', 'heat'].contains(currentMode) ||
