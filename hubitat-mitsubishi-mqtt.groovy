@@ -34,6 +34,8 @@ import groovy.transform.Field
 import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 
+import java.math.RoundingMode
+
 @Field static List<String> supportedThermostatFanModes = ['auto', 'quiet', '1', '2', '3', '4']
 @Field static List<String> supportedThermostatModes = ['auto', 'off', 'cool', 'heat', 'fan', 'dry']
 
@@ -288,7 +290,11 @@ void wideVane(String position) {
 }
 
 void setCoolingSetpoint(BigDecimal setpoint) {
-    sendEvent([name: 'coolingSetpoint', value: setpoint, unit: getTemperatureUnit()])
+    runInMillis(2000, "debouncedSetCoolingSetpoint", [data: [setpoint: setpoint]])
+}
+
+private void debouncedSetCoolingSetpoint(BigDecimal setpoint) {
+    sendEvent([name: 'coolingSetpoint', value: setpoint.setScale(1, RoundingMode.HALF_UP), unit: getTemperatureUnit()])
     String currentMode = device.currentValue('thermostatMode', true)
     if (
         ['pending cool', 'cool'].contains(currentMode) ||
@@ -301,7 +307,12 @@ void setCoolingSetpoint(BigDecimal setpoint) {
 }
 
 void setHeatingSetpoint(BigDecimal setpoint) {
-    sendEvent([name: 'heatingSetpoint', value: setpoint, unit: getTemperatureUnit()])
+    runInMillis(2000, "debouncedSetHeatingSetpoint", [data: [setpoint: setpoint]])
+}
+
+private void debouncedSetHeatingSetpoint(data) {
+    BigDecimal setpoint = data.setpoint
+    sendEvent([name: 'heatingSetpoint', value: setpoint.setScale(1, RoundingMode.HALF_UP), unit: getTemperatureUnit()])
     String currentMode = device.currentValue('thermostatMode', true)
     if (
         ['pending heat', 'heat'].contains(currentMode) ||
