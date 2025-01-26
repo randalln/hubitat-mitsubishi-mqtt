@@ -168,15 +168,18 @@ void parse(String message) {
     }
 }
 
-List processTemperatureUpdate(Map payload) {
+private List processTemperatureUpdate(Map payload) {
     BigDecimal temperature = new BigDecimal(convertTemperatureIfNeeded(payload.roomTemperature, 'C', 1))
     BigDecimal tempC = new BigDecimal(payload.roomTemperature)
     String currentMode = device.currentValue('thermostatMode')
     // As the heat pump reports back temp changes, gradually adjust the intermediate setpoint
-    if (gradualAdjustment && currentMode == "heat") { // TODO: Filter out the regular chatter from the heat pump
-        def currentSetpoint = device.currentValue("heatingSetpoint")
-        BigDecimal heatingSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
-        graduallyAdjustSetpointHeating(tempC, heatingSetpointC)
+    if (gradualAdjustment) {
+        if (currentMode == "heat") {
+            def currentSetpoint = device.currentValue("heatingSetpoint")
+            BigDecimal currentSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
+            graduallyAdjustSetpointHeating(tempC, currentSetpointC)
+            // } else if (currentMode == "cool") { // TODO
+        }
     }
 
     return [
@@ -196,7 +199,7 @@ List processTemperatureUpdate(Map payload) {
     ]
 }
 
-List processOperatingUpdate(Map payload) {
+private List processOperatingUpdate(Map payload) {
     BigDecimal temperature = new BigDecimal(convertTemperatureIfNeeded(payload.temperature, 'C', 1))
     String mode = getThermostatMode(payload.power, payload.mode)
     String fanMode = getThermostatFanMode(payload.power, payload.fan)
@@ -241,23 +244,23 @@ List processOperatingUpdate(Map payload) {
     return events
 }
 
-String getThermostatMode(String power, String mode) {
+private String getThermostatMode(String power, String mode) {
     return power == 'OFF' ? 'off' : thermostatModeMapping[mode]
 }
 
-String getThermostatFanMode(String power, String mode) {
+private String getThermostatFanMode(String power, String mode) {
     return power == 'OFF' ? 'auto' : thermostatFanModeMapping[mode]
 }
 
-void updateRunningMode(String lastRunningMode) {
+private void updateRunningMode(String lastRunningMode) {
     updateDataValue('lastRunningMode', lastRunningMode)
 }
 
-String getRunningMode() {
+private String getRunningMode() {
     getDataValue('lastRunningMode')
 }
 
-BigDecimal getSetpointForMode(String mode) {
+private BigDecimal getSetpointForMode(String mode) {
     switch (mode) {
         case 'heat':
             return device.currentValue('heatingSetpoint')
@@ -268,7 +271,7 @@ BigDecimal getSetpointForMode(String mode) {
     }
 }
 
-BigDecimal convertInputToCelsius(BigDecimal inputTemperature) {
+private BigDecimal convertInputToCelsius(BigDecimal inputTemperature) {
     return getTemperatureScale() == 'C' ?
             inputTemperature :
             fahrenheitToCelsius(inputTemperature).setScale(1, RoundingMode.HALF_UP)
@@ -279,11 +282,11 @@ BigDecimal convertInputToCelsius(BigDecimal inputTemperature) {
  * @param inputTemperature
  * @return temperature
  */
-BigDecimal convertToHalfCelsius(BigDecimal inputTemperature) {
+private BigDecimal convertToHalfCelsius(BigDecimal inputTemperature) {
     return getTemperatureScale() == 'C' ? roundToHalf(inputTemperature) : roundToHalf(fahrenheitToCelsius(inputTemperature))
 }
 
-static BigDecimal roundToHalf(BigDecimal temperature) {
+private static BigDecimal roundToHalf(BigDecimal temperature) {
     return (temperature * 2).setScale(0, RoundingMode.HALF_UP) / 2.0
 }
 
@@ -340,6 +343,7 @@ void setHeatingSetpoint(BigDecimal setpoint) {
 }
 
 private void debouncedSetHeatingSetpoint(data) {
+    // TODO: Figure out why the unit test requires data.data.setpoint instead
     final BigDecimal setpointC = convertToHalfCelsius(data.setpoint)
     sendEvent(
             [
@@ -357,7 +361,7 @@ private void debouncedSetHeatingSetpoint(data) {
             BigDecimal currentTempC = convertInputToCelsius(device.currentValue('temperature'))
             graduallyAdjustSetpointHeating(currentTempC, setpointC)
         } else {
-            publish(['temperature': setpointC])
+            publish(['temperature': setpointC.floatValue()])
         }
     } else {
         logDebug "Current mode is ${currentMode} so not publishing heatingSetpoint to ${setpointC}"
@@ -365,11 +369,17 @@ private void debouncedSetHeatingSetpoint(data) {
 }
 
 private def graduallyAdjustSetpointHeating(BigDecimal tempC, BigDecimal setpointC) {
-    logDebug("tempC: ${tempC}, setpointC: ${setpointC}")
-    BigDecimal gradualSetpoint = calculateGradualSetpointHeating(tempC, setpointC)
-    publish(['temperature': gradualSetpoint])
+    logDebug("tempC: ${tempC}, setpointC: ${setpointC}, setpointReached ${state.setpointReached}")
+    BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, setpointC)
+    if (gradualSetpointC != setpointC) {
+        state.remove("setpointReached")
+        publish(['temperature': gradualSetpointC.floatValue()])
+    } else if (!state.setpointReached) {
+        publish(['temperature': gradualSetpointC.floatValue()])
+        state.setpointReached = true
+    }
 
-    return gradualSetpoint
+    return gradualSetpointC
 }
 
 /**
@@ -387,7 +397,7 @@ private def calculateGradualSetpointHeating(BigDecimal currentTempC, BigDecimal 
         logDebug "Intermediate setpoint: ${currentTemp + 0.5}"
         return currentTemp + 0.5
     } else {
-        logDebug "Reached setpoint: ${newSetpoint}"
+        logDebug "Reached setpoint: ${newSetpoint.floatValue()}"
         return newSetpoint
     }
 }
@@ -456,11 +466,11 @@ void setThermostatFanMode(String fanMode) {
     }
 }
 
-Map powerOn(Map command = [:]) {
+private Map powerOn(Map command = [:]) {
     ['power': 'ON'] + command
 }
 
-Map powerOff(Map command = [:]) {
+private Map powerOff(Map command = [:]) {
     ['power': 'OFF'] + command
 }
 
