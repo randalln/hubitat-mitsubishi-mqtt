@@ -30,7 +30,6 @@
  * SOFTWARE.
  */
 
-
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import groovy.transform.Field
@@ -109,6 +108,7 @@ preferences {
             description: '(as defined in your header file, e.g. climate/office)', required: true
         input name: 'brokerUsername', type: 'string', title: 'MQTT User'
         input name: 'brokerPassword', type: 'password', title: 'MQTT Password'
+        input name: 'gradualAdjustment', type: 'bool', title: 'Gradual Temperature Adjustment'
     }
     section('Advanced') {
         input name: 'debugLoggingEnabled', type: 'bool', title: 'Enable debug logging', defaultValue: true
@@ -170,7 +170,15 @@ void parse(String message) {
 
 List processTemperatureUpdate(Map payload) {
     BigDecimal temperature = new BigDecimal(convertTemperatureIfNeeded(payload.roomTemperature, 'C', 1))
+    BigDecimal tempC = new BigDecimal(payload.roomTemperature)
     String currentMode = device.currentValue('thermostatMode')
+    // As the heat pump reports back temp changes, gradually adjust the intermediate setpoint
+    if (gradualAdjustment && currentMode == "heat") { // TODO: Filter out the regular chatter from the heat pump
+        def currentSetpoint = device.currentValue("heatingSetpoint")
+        BigDecimal heatingSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
+        graduallyAdjustSetpointHeating(tempC, heatingSetpointC)
+    }
+
     return [
         [
             name: 'temperature',
@@ -207,11 +215,19 @@ List processOperatingUpdate(Map payload) {
             events << [name: 'thermostatOperatingState', value: thermostatOperatingStateMapping[mode]]
             break
         case 'cool':
+            // Override the setpoint reported by the heat pump while we're gradually adjusting
+            if (gradualAdjustment) {
+                temperature = device.currentValue('heatingSetpoint')
+            }
             events << [name: 'coolingSetpoint', value: temperature, unit: getTemperatureUnit()]
             events << [name: 'thermostatSetpoint', value: temperature, unit: getTemperatureUnit()]
             updateRunningMode('cool')
             break
         case 'heat':
+            // Override the setpoint reported by the heat pump while we're gradually adjusting
+            if (gradualAdjustment) {
+                temperature = device.currentValue('heatingSetpoint')
+            }
             events << [name: 'heatingSetpoint', value: temperature, unit: getTemperatureUnit()]
             events << [name: 'thermostatSetpoint', value: temperature, unit: getTemperatureUnit()]
             updateRunningMode('heat')
@@ -254,8 +270,21 @@ BigDecimal getSetpointForMode(String mode) {
 
 BigDecimal convertInputToCelsius(BigDecimal inputTemperature) {
     return getTemperatureScale() == 'C' ?
-        inputTemperature :
-        Math.round(fahrenheitToCelsius(inputTemperature) * 2) / 2.0
+            inputTemperature :
+            fahrenheitToCelsius(inputTemperature).setScale(1, RoundingMode.HALF_UP)
+}
+
+/**
+ * Convert temperature to Celsius as needed and round to the nearest 0.5
+ * @param inputTemperature
+ * @return temperature
+ */
+BigDecimal convertToHalfCelsius(BigDecimal inputTemperature) {
+    return getTemperatureScale() == 'C' ? roundToHalf(inputTemperature) : roundToHalf(fahrenheitToCelsius(inputTemperature))
+}
+
+static BigDecimal roundToHalf(BigDecimal temperature) {
+    return (temperature * 2).setScale(0, RoundingMode.HALF_UP) / 2.0
 }
 
 /* Commands */
@@ -300,7 +329,7 @@ private void debouncedSetCoolingSetpoint(BigDecimal setpoint) {
         ['pending cool', 'cool'].contains(currentMode) ||
         currentMode == 'auto' && getRunningMode() == 'cool' // won't work until HeatPump sends x09 payload
     ) {
-        publish(['temperature': convertInputToCelsius(setpoint)])
+        publish(['temperature': convertToHalfCelsius(setpoint)])
     } else {
         logDebug "Current mode is ${currentMode} so not publishing coolingSetpoint change to ${setpoint}"
     }
@@ -311,23 +340,62 @@ void setHeatingSetpoint(BigDecimal setpoint) {
 }
 
 private void debouncedSetHeatingSetpoint(data) {
-    BigDecimal setpoint = data.setpoint
-    sendEvent([name: 'heatingSetpoint', value: setpoint.setScale(1, RoundingMode.HALF_UP), unit: getTemperatureUnit()])
-    String currentMode = device.currentValue('thermostatMode', true)
+    final BigDecimal setpointC = convertToHalfCelsius(data.setpoint)
+    sendEvent(
+            [
+                    name : 'heatingSetpoint',
+                    value: new BigDecimal(convertTemperatureIfNeeded(setpointC, 'C', 1)),
+                    unit : getTemperatureUnit()
+            ]
+    )
+    final String currentMode = device.currentValue('thermostatMode', true)
     if (
         ['pending heat', 'heat'].contains(currentMode) ||
         currentMode == 'auto' && getRunningMode() == 'heat' // won't work until HeatPump sends x09 payload
     ) {
-        publish(['temperature': convertInputToCelsius(setpoint)])
+        if (gradualAdjustment) {
+            BigDecimal currentTempC = convertInputToCelsius(device.currentValue('temperature'))
+            graduallyAdjustSetpointHeating(currentTempC, setpointC)
+        } else {
+            publish(['temperature': setpointC])
+        }
     } else {
-        logDebug "Current mode is ${currentMode} so not publishing heatingSetpoint to ${setpoint}"
+        logDebug "Current mode is ${currentMode} so not publishing heatingSetpoint to ${setpointC}"
+    }
+}
+
+private def graduallyAdjustSetpointHeating(BigDecimal tempC, BigDecimal setpointC) {
+    logDebug("tempC: ${tempC}, setpointC: ${setpointC}")
+    BigDecimal gradualSetpoint = calculateGradualSetpointHeating(tempC, setpointC)
+    publish(['temperature': gradualSetpoint])
+
+    return gradualSetpoint
+}
+
+/**
+ *
+ * @param currentTempC current temperature in Celsius
+ * @param targetSetpointC target setpoint in Celsius
+ * @return new setpoint
+ */
+private def calculateGradualSetpointHeating(BigDecimal currentTempC, BigDecimal targetSetpointC) {
+    BigDecimal currentTemp = roundToHalf(currentTempC)
+    BigDecimal newSetpoint = roundToHalf(targetSetpointC)
+    logDebug "currentTemp: ${currentTemp}, targetSetpoint: ${newSetpoint}"
+
+    if (newSetpoint > currentTemp + 0.5) {
+        logDebug "Intermediate setpoint: ${currentTemp + 0.5}"
+        return currentTemp + 0.5
+    } else {
+        logDebug "Reached setpoint: ${newSetpoint}"
+        return newSetpoint
     }
 }
 
 void setRemoteTemperature(BigDecimal temperature) {
     if (temperature != null) {
         // 0 tells the code on the HP to switch to the internal sensor
-        BigDecimal remoteTemp = temperature == 0 ? 0 : convertInputToCelsius(temperature)
+        BigDecimal remoteTemp = temperature == 0 ? 0 : convertToHalfCelsius(temperature)
         def thermostatOperatingState = device.currentValue('thermostatOperatingState')
         // Add or subtract 0.5C while operating to actually get it to turn off closer to the desired setpoint
         if (remoteTemp != 0) {
@@ -353,7 +421,7 @@ void setThermostatMode(String mode) {
         case 'heat':
             publish(powerOn([
                 'mode': mappedMode,
-                'temperature': convertInputToCelsius(getSetpointForMode(mode))
+                'temperature': convertToHalfCelsius(getSetpointForMode(mode))
             ]))
             break
         case 'fan':
