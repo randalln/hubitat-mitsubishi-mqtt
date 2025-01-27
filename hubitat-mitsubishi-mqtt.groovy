@@ -293,7 +293,8 @@ void setCoolingSetpoint(BigDecimal setpoint) {
     runInMillis(2000, "debouncedSetCoolingSetpoint", [data: [setpoint: setpoint]])
 }
 
-private void debouncedSetCoolingSetpoint(BigDecimal setpoint) {
+private def debouncedSetCoolingSetpoint(data) {
+    final BigDecimal setpoint = data.setpoint
     sendEvent([name: 'coolingSetpoint', value: setpoint.setScale(1, RoundingMode.HALF_UP), unit: getTemperatureUnit()])
     String currentMode = device.currentValue('thermostatMode', true)
     if (
