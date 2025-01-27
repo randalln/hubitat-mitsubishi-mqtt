@@ -173,12 +173,13 @@ private List processTemperatureUpdate(Map payload) {
     BigDecimal tempC = new BigDecimal(payload.roomTemperature)
     String currentMode = device.currentValue('thermostatMode')
     // As the heat pump reports back temp changes, gradually adjust the intermediate setpoint
-    if (gradualAdjustment && shouldPublishSetpoint(currentMode)) {
+    if (gradualAdjustment && state.intermediateSetpoint && shouldPublishSetpoint(currentMode)) {
         def currentSetpoint = device.currentValue("heatingSetpoint")
-        BigDecimal currentSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
-        BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, currentSetpointC)
+        BigDecimal targetSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
+        BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, targetSetpointC)
+        logTrace "currentSetpointC: $targetSetpointC, gradualSetpointC: $gradualSetpointC, intermediateSetpoint: $state.intermediateSetpoint"
         if (gradualSetpointC != state.intermediateSetpoint) {
-            graduallyAdjustSetpointHeating(tempC, currentSetpointC)
+            graduallyAdjustSetpointHeating(tempC, targetSetpointC)
         }
     }
 
@@ -326,7 +327,8 @@ void setCoolingSetpoint(BigDecimal setpoint) {
     runInMillis(2000, "debouncedSetCoolingSetpoint", [data: [setpoint: setpoint]])
 }
 
-private void debouncedSetCoolingSetpoint(BigDecimal setpoint) {
+private def debouncedSetCoolingSetpoint(data) {
+    final BigDecimal setpoint = data.setpoint
     sendEvent([name: 'coolingSetpoint', value: setpoint.setScale(1, RoundingMode.HALF_UP), unit: getTemperatureUnit()])
     String currentMode = device.currentValue('thermostatMode', true)
     if (
@@ -343,7 +345,7 @@ void setHeatingSetpoint(BigDecimal setpoint) {
     runInMillis(2000, "debouncedSetHeatingSetpoint", [data: [setpoint: setpoint]])
 }
 
-private void debouncedSetHeatingSetpoint(data) {
+private def debouncedSetHeatingSetpoint(data) {
     // TODO: Figure out why the unit test requires data.data.setpoint instead
     final BigDecimal setpointC = convertToHalfCelsius(data.setpoint)
     sendEvent(
@@ -372,16 +374,18 @@ private boolean shouldPublishSetpoint(String currentMode) {
 }
 
 private def graduallyAdjustSetpointHeating(BigDecimal tempC, BigDecimal setpointC) {
-    logDebug("tempC: ${tempC}, setpointC: ${setpointC}, intermediateSetpoint: ${state.intermediateSetpoint}")
+    logTrace("tempC: ${tempC}, setpointC: ${setpointC}, intermediateSetpoint: ${state.intermediateSetpoint}")
     BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, setpointC)
     if (gradualSetpointC != setpointC) {
         log.info "Intermediate setpoint: ${tempC} < ${gradualSetpointC.floatValue()} > ${setpointC}"
         state.intermediateSetpoint = gradualSetpointC
         publish(['temperature': gradualSetpointC.floatValue()])
-    } else if (state.intermediateSetpoint) {
+    } else {
+        if (state.intermediateSetpoint) {
+            log.info "Setpoint reached target setpoint: ${gradualSetpointC.floatValue()}"
+            state.remove("intermediateSetpoint")
+        }
         publish(['temperature': gradualSetpointC.floatValue()])
-        log.info "Reached target setpoint: ${gradualSetpointC.floatValue()}"
-        state.remove("intermediateSetpoint")
     }
 
     return gradualSetpointC
@@ -544,5 +548,11 @@ void disableDebugLogging() {
 void logDebug(String msg) {
     if (debugLoggingEnabled) {
         log.debug msg
+    }
+}
+
+void logTrace(String msg) {
+    if (debugLoggingEnabled) {
+        log.trace msg
     }
 }

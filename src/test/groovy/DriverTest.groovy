@@ -13,6 +13,7 @@ import java.math.RoundingMode
 class DriverTest extends Specification {
     HubitatDeviceSandbox sandbox = new HubitatDeviceSandbox(new File("src/main/groovy/hubitat-mitsubishi-mqtt.groovy"))
     Log logger = Mock {
+        trace(_) >> { args -> println(args) }
         debug(_) >> { args -> println(args) }
         info(_) >> { args -> println(args) }
     }
@@ -162,8 +163,8 @@ class DriverTest extends Specification {
         18.5         | 20              | 19.0        | newSetpoint          | 1
         18.9         | 20              | 19.5        | newSetpoint          | 1
         19.8         | 20              | 20.0        | null                 | 1
-        20           | 20              | 20.0        | null                 | 0
-        21.0         | 20              | 20.0        | null                 | 0
+        20   | 20 | 20.0 | null | 1
+        21.0 | 20 | 20.0 | null | 1
     }
 
     def "processTemperatureUpdate() Celsius"() {
@@ -185,6 +186,7 @@ class DriverTest extends Specification {
         )
 
         when:
+        state.intermediateSetpoint = intermediateSetpoint
         def events = script.processTemperatureUpdate([roomTemperature: tempC, operating: false])
 
         then:
@@ -195,10 +197,10 @@ class DriverTest extends Specification {
         publishes * mqtt.publish("heatpump/set", "{\"temperature\":${gradualTempC}}") // gradualAdjustment side-effect
 
         where:
-        tempC | gradualTempC | publishes
-        19.5  | 20.0         | 1
-        20.0  | 20.5         | 1
-        20.5  | 20.5         | 0
+        tempC | gradualTempC | publishes | intermediateSetpoint
+        19.5  | 20.0         | 1         | 19.5
+        20.0  | 20.5         | 1         | 20.0
+        20.5  | 20.5         | 0         | null
     }
 
     def "processTemperatureUpdate() Fahrenheit"() {
@@ -220,6 +222,7 @@ class DriverTest extends Specification {
         )
 
         when:
+        state.intermediateSetpoint = intermediateSetpoint
         def events = script.processTemperatureUpdate([roomTemperature: tempC, operating: false])
 
         then:
@@ -230,10 +233,10 @@ class DriverTest extends Specification {
         publishes * mqtt.publish("heatpump/set", "{\"temperature\":${gradualTempC}}") // gradualAdjustment side-effect
 
         where:
-        tempC | tempF | gradualTempC | publishes
-        19.5  | 67.1  | 20.0         | 1
-        20.0  | 68.0  | 20.5         | 1
-        20.0  | 68.0  | 20.5         | 0
+        tempC | tempF | gradualTempC | publishes | intermediateSetpoint
+        19.5  | 67.1  | 20.0         | 1         | 19.5
+        20.0  | 68.0  | 20.5         | 1         | 20.0
+        20.5  | 68.9  | 20.5         | 0         | null
     }
 
     def "parse processTemperatureUpdate"() {
@@ -442,10 +445,10 @@ class DriverTest extends Specification {
 
     def "debouncedSetHeatingSetpoint Fahrenheit gradualAdjustment"() {
         given:
+        def temp
         initState()
         device.currentValue("thermostatMode", *_) >> "heat"
-        // device.currentValue("heatingSetpoint") >> 68.9
-        device.currentValue("temperature") >> 66.2
+        device.currentValue("temperature") >> { temp }
         final def script = sandbox.run(
                 api: executorApi,
                 userSettingValues: [
@@ -460,11 +463,21 @@ class DriverTest extends Specification {
         )
 
         when:
-        script.debouncedSetHeatingSetpoint([data: [setpoint: 68.8]])
+        temp = currentTemp
+        state.intermediateSetpoint = intermediateBefore
+        script.debouncedSetHeatingSetpoint([data: [setpoint: setpointF]])
 
         then:
-        1 * executorApi.sendEvent(["name": "heatingSetpoint", "value": 68.9, "unit": "°F"])
-        1 * mqtt.publish("heatpump/set", "{\"temperature\":19.5}")
+        1 * executorApi.sendEvent(["name": "heatingSetpoint", "value": newSetpointF, "unit": "°F"])
+        1 * mqtt.publish("heatpump/set", "{\"temperature\":${newSetpointC}}")
+        state.intermediateSetpoint == intermediateAfter
+
+        where:
+        currentTemp | setpointF | newSetpointF | newSetpointC | intermediateBefore | intermediateAfter
+        65.3        | 66.0      | 66.2         | 19.0         | null               | null
+        66.2        | 68.0      | 68.0         | 19.5         | null               | newSetpointC
+        66.2        | 68.0      | 68.0         | 19.5         | 67.1               | newSetpointC
+        68.0        | 63.0      | 62.6         | 17.0         | 19.5               | null
     }
 
     def "debouncedSetHeatingSetpoint Celsius gradualAdjustment"() {
