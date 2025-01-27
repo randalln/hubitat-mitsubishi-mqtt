@@ -173,12 +173,12 @@ private List processTemperatureUpdate(Map payload) {
     BigDecimal tempC = new BigDecimal(payload.roomTemperature)
     String currentMode = device.currentValue('thermostatMode')
     // As the heat pump reports back temp changes, gradually adjust the intermediate setpoint
-    if (gradualAdjustment) {
-        if (currentMode == "heat") {
-            def currentSetpoint = device.currentValue("heatingSetpoint")
-            BigDecimal currentSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
+    if (gradualAdjustment && shouldPublishSetpoint(currentMode)) {
+        def currentSetpoint = device.currentValue("heatingSetpoint")
+        BigDecimal currentSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
+        BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, currentSetpointC)
+        if (gradualSetpointC != state.intermediateSetpoint) {
             graduallyAdjustSetpointHeating(tempC, currentSetpointC)
-            // } else if (currentMode == "cool") { // TODO
         }
     }
 
@@ -253,6 +253,7 @@ private String getThermostatFanMode(String power, String mode) {
 }
 
 private void updateRunningMode(String lastRunningMode) {
+    state.remove("intermediateSetpoint")
     updateDataValue('lastRunningMode', lastRunningMode)
 }
 
@@ -353,10 +354,7 @@ private void debouncedSetHeatingSetpoint(data) {
             ]
     )
     final String currentMode = device.currentValue('thermostatMode', true)
-    if (
-        ['pending heat', 'heat'].contains(currentMode) ||
-        currentMode == 'auto' && getRunningMode() == 'heat' // won't work until HeatPump sends x09 payload
-    ) {
+    if (shouldPublishSetpoint(currentMode)) {
         if (gradualAdjustment) {
             BigDecimal currentTempC = convertInputToCelsius(device.currentValue('temperature'))
             graduallyAdjustSetpointHeating(currentTempC, setpointC)
@@ -368,15 +366,22 @@ private void debouncedSetHeatingSetpoint(data) {
     }
 }
 
+private boolean shouldPublishSetpoint(String currentMode) {
+    return ['pending heat', 'heat'].contains(currentMode) ||
+            currentMode == 'auto' && getRunningMode() == 'heat' // won't work until HeatPump sends x09 payload
+}
+
 private def graduallyAdjustSetpointHeating(BigDecimal tempC, BigDecimal setpointC) {
-    logDebug("tempC: ${tempC}, setpointC: ${setpointC}, setpointReached ${state.setpointReached}")
+    logDebug("tempC: ${tempC}, setpointC: ${setpointC}, intermediateSetpoint: ${state.intermediateSetpoint}")
     BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, setpointC)
     if (gradualSetpointC != setpointC) {
-        state.remove("setpointReached")
+        log.info "Intermediate setpoint: ${tempC} < ${gradualSetpointC.floatValue()} > ${setpointC}"
+        state.intermediateSetpoint = gradualSetpointC
         publish(['temperature': gradualSetpointC.floatValue()])
-    } else if (!state.setpointReached) {
+    } else if (state.intermediateSetpoint) {
         publish(['temperature': gradualSetpointC.floatValue()])
-        state.setpointReached = true
+        log.info "Reached target setpoint: ${gradualSetpointC.floatValue()}"
+        state.remove("intermediateSetpoint")
     }
 
     return gradualSetpointC
@@ -388,16 +393,13 @@ private def graduallyAdjustSetpointHeating(BigDecimal tempC, BigDecimal setpoint
  * @param targetSetpointC target setpoint in Celsius
  * @return new setpoint
  */
-private def calculateGradualSetpointHeating(BigDecimal currentTempC, BigDecimal targetSetpointC) {
+private static def calculateGradualSetpointHeating(BigDecimal currentTempC, BigDecimal targetSetpointC) {
     BigDecimal currentTemp = roundToHalf(currentTempC)
     BigDecimal newSetpoint = roundToHalf(targetSetpointC)
-    logDebug "currentTemp: ${currentTemp}, targetSetpoint: ${newSetpoint}"
 
     if (newSetpoint > currentTemp + 0.5) {
-        logDebug "Intermediate setpoint: ${currentTemp + 0.5}"
         return currentTemp + 0.5
     } else {
-        logDebug "Reached setpoint: ${newSetpoint.floatValue()}"
         return newSetpoint
     }
 }

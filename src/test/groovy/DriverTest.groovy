@@ -11,16 +11,17 @@ import spock.lang.Specification
 import java.math.RoundingMode
 
 class DriverTest extends Specification {
-    HubitatDeviceSandbox sandbox = new HubitatDeviceSandbox(new File("../hubitat-mitsubishi-mqtt.groovy"))
+    HubitatDeviceSandbox sandbox = new HubitatDeviceSandbox(new File("src/main/groovy/hubitat-mitsubishi-mqtt.groovy"))
     Log logger = Mock {
         debug(_) >> { args -> println(args) }
+        info(_) >> { args -> println(args) }
     }
     DeviceWrapper device
     Mqtt mqtt
     InterfaceHelper interfaceHelper
     DeviceExecutor executorApi
     @Shared
-    Map state = [setpointReached: false]
+    Map state = [:]
 
     void initState(String temperatureScale = "F") {
         device = Mock {
@@ -131,7 +132,7 @@ class DriverTest extends Specification {
         21.0         | 20              | 20.0
     }
 
-    def "graduallyAdjustSetpointHeating intermediate"() {
+    def graduallyAdjustSetpointHeating() {
         given:
         initState()
         device.currentValue("thermostatMode") >> "heat"
@@ -152,50 +153,20 @@ class DriverTest extends Specification {
         script.graduallyAdjustSetpointHeating(currentTempC, targetSetpointC) == newSetpoint
 
         then:
-        1 * mqtt.publish("heatpump/set", "{\"temperature\":${newSetpoint}}")
-        state.setpointReached == setpointReached
+        publishes * mqtt.publish("heatpump/set", "{\"temperature\":${newSetpoint}}")
+        state.intermediateSetpoint == intermediateSetpoint
 
         where:
-        currentTempC | targetSetpointC | newSetpoint | setpointReached
-        18.2         | 20              | 18.5        | null
-        18.5         | 20              | 19.0        | null
-        18.9         | 20              | 19.5        | null
-        19.8         | 20              | 20.0        | true
+        currentTempC | targetSetpointC | newSetpoint | intermediateSetpoint | publishes
+        18.2         | 20              | 18.5        | newSetpoint          | 1
+        18.5         | 20              | 19.0        | newSetpoint          | 1
+        18.9         | 20              | 19.5        | newSetpoint          | 1
+        19.8         | 20              | 20.0        | null                 | 1
+        20           | 20              | 20.0        | null                 | 0
+        21.0         | 20              | 20.0        | null                 | 0
     }
 
-    def "graduallyAdjustSetpointHeating target setpoint reached"() {
-        given:
-        initState()
-        device.currentValue("thermostatMode") >> "heat"
-        final def script = sandbox.run(
-                api: executorApi,
-                userSettingValues: [
-                        Input1: "topicRoot", topicRoot: "heatpump",
-                        Input2: "gradualAdjustment", gradualAdjustment: true,
-                        Input3: "debugLoggingEnabled", debugLoggingEnabled: true
-                ],
-                validationFlags: [
-                        Flags.DontRestrictGroovy,
-                        Flags.DontRunScript
-                ]
-        )
-
-        when:
-        state.setpointReached = true
-        script.graduallyAdjustSetpointHeating(currentTempC, targetSetpointC) == newSetpoint
-
-        then:
-        0 * mqtt.publish(*_)
-        state.setpointReached == setpointReached
-
-        where:
-        currentTempC | targetSetpointC | newSetpoint | setpointReached
-        19.8         | 20              | 20.0        | true
-        19.8         | 20              | 20.0        | true
-        21.0         | 20              | 20.0        | true
-    }
-
-    def "processTemperatureUpdate() Celsius intermediate"() {
+    def "processTemperatureUpdate() Celsius"() {
         given:
         initState("C")
         device.currentValue("thermostatMode") >> "heat"
@@ -221,15 +192,16 @@ class DriverTest extends Specification {
                 [name: "temperature", value: tempC, unit: "°C", descriptionText: "Temperature is ${tempC}°C"],
                 [name: "thermostatOperatingState", value: "idle"]
         ]
-        1 * mqtt.publish("heatpump/set", "{\"temperature\":${gradualTempC}}") // gradualAdjustment side-effect
+        publishes * mqtt.publish("heatpump/set", "{\"temperature\":${gradualTempC}}") // gradualAdjustment side-effect
 
         where:
-        tempC | gradualTempC
-        19.5  | 20.0
-        20.0  | 20.5
+        tempC | gradualTempC | publishes
+        19.5  | 20.0         | 1
+        20.0  | 20.5         | 1
+        20.5  | 20.5         | 0
     }
 
-    def "processTemperatureUpdate() Fahrenheit intermediate"() {
+    def "processTemperatureUpdate() Fahrenheit"() {
         given:
         initState()
         device.currentValue("thermostatMode") >> "heat"
@@ -255,46 +227,13 @@ class DriverTest extends Specification {
                 [name: "temperature", value: tempF, unit: "°F", descriptionText: "Temperature is ${tempF}°F"],
                 [name: "thermostatOperatingState", value: "idle"]
         ]
-        1 * mqtt.publish("heatpump/set", "{\"temperature\":${gradualTempC}}") // gradualAdjustment side-effect
+        publishes * mqtt.publish("heatpump/set", "{\"temperature\":${gradualTempC}}") // gradualAdjustment side-effect
 
         where:
-        tempC | tempF | gradualTempC
-        19.5  | 67.1  | 20.0
-        20.0  | 68.0  | 20.5
-    }
-
-    def "processTemperatureUpdate() Fahrenheit setpoint reached"() {
-        given:
-        initState()
-        device.currentValue("thermostatMode") >> "heat"
-        device.currentValue("heatingSetpoint") >> 68.9
-        final def script = sandbox.run(
-                api: executorApi,
-                userSettingValues: [
-                        Input1: "topicRoot", topicRoot: "heatpump",
-                        Input2: "gradualAdjustment", gradualAdjustment: true,
-                        Input3: "debugLoggingEnabled", debugLoggingEnabled: true
-                ],
-                validationFlags: [
-                        Flags.DontRestrictGroovy,
-                        Flags.DontRunScript
-                ]
-        )
-
-        when:
-        state.setpointReached = true
-        def events = script.processTemperatureUpdate([roomTemperature: tempC, operating: false])
-
-        then:
-        events == [
-                [name: "temperature", value: tempF, unit: "°F", descriptionText: "Temperature is ${tempF}°F"],
-                [name: "thermostatOperatingState", value: "idle"]
-        ]
-        0 * mqtt.publish("heatpump/set", "{\"temperature\":${gradualTempC}}") // gradualAdjustment side-effect
-
-        where:
-        tempC | tempF | gradualTempC
-        20.5  | 68.9  | 20.5
+        tempC | tempF | gradualTempC | publishes
+        19.5  | 67.1  | 20.0         | 1
+        20.0  | 68.0  | 20.5         | 1
+        20.0  | 68.0  | 20.5         | 0
     }
 
     def "parse processTemperatureUpdate"() {
@@ -348,15 +287,20 @@ class DriverTest extends Specification {
 
         when:
         def events = script.processOperatingUpdate(
-                ["power": "ON", "mode": "HEAT", "temperature": 17.5,
+                ["power": "ON", "mode": "HEAT", "temperature": temperature,
                  "fan"  : "3", "vane": "4", "wideVane": "<<"]
         )
 
         then:
         events[0] == [name: "thermostatMode", value: "heat"]
         events[1] == [name: "thermostatFanMode", value: "3"]
-        events[2] == [name: "heatingSetpoint", value: 17.5, unit: "°C"]
-        events[3] == [name: "thermostatSetpoint", value: 17.5, unit: "°C"]
+        events[2] == [name: "heatingSetpoint", value: setpoint, unit: "°C"]
+        events[3] == [name: "thermostatSetpoint", value: setpoint, unit: "°C"]
+
+        where:
+        temperature | setpoint
+        17.5        | 17.5
+        18.0        | 18.0
     }
 
     def "processOperatingUpdate Celsius gradualAdjustment"() {
@@ -379,15 +323,22 @@ class DriverTest extends Specification {
 
         when:
         def events = script.processOperatingUpdate(
-                ["power": "ON", "mode": "HEAT", "temperature": 17.5,
+                ["power": "ON", "mode": "HEAT", "temperature": temperature,
                  "fan"  : "3", "vane": "4", "wideVane": "<<"]
         )
 
         then:
         events[0] == [name: "thermostatMode", value: "heat"]
         events[1] == [name: "thermostatFanMode", value: "3"]
-        events[2] == [name: "heatingSetpoint", value: 20.5, unit: "°C"]
-        events[3] == [name: "thermostatSetpoint", value: 20.5, unit: "°C"]
+        events[2] == [name: "heatingSetpoint", value: setpoint, unit: "°C"]
+        events[3] == [name: "thermostatSetpoint", value: setpoint, unit: "°C"]
+
+        where:
+        temperature | setpoint
+        19.5        | 20.5
+        20.0        | 20.5
+        20.5        | 20.5
+        21.0        | 20.5
     }
 
     def "processOperatingUpdate Fahrenheit"() {
@@ -410,15 +361,20 @@ class DriverTest extends Specification {
 
         when:
         def events = script.processOperatingUpdate(
-                ["power": "ON", "mode": "HEAT", "temperature": 17.5,
+                ["power": "ON", "mode": "HEAT", "temperature": temperature,
                  "fan"  : "3", "vane": "4", "wideVane": "<<"]
         )
 
         then:
         events[0] == [name: "thermostatMode", value: "heat"]
         events[1] == [name: "thermostatFanMode", value: "3"]
-        events[2] == [name: "heatingSetpoint", value: 63.5, unit: "°F"]
-        events[3] == [name: "thermostatSetpoint", value: 63.5, unit: "°F"]
+        events[2] == [name: "heatingSetpoint", value: setpointF, unit: "°F"]
+        events[3] == [name: "thermostatSetpoint", value: setpointF, unit: "°F"]
+
+        where:
+        temperature | setpointF
+        17.5        | 63.5
+        18.0        | 64.4
     }
 
     def "processOperatingUpdate Fahrenheit gradualAdjustment"() {
@@ -441,46 +397,22 @@ class DriverTest extends Specification {
 
         when:
         def events = script.processOperatingUpdate(
-                ["power": "ON", "mode": "HEAT", "temperature": 17.5,
+                ["power": "ON", "mode": "HEAT", "temperature": temperature,
                  "fan"  : "3", "vane": "4", "wideVane": "<<"]
         )
 
         then:
         events[0] == [name: "thermostatMode", value: "heat"]
         events[1] == [name: "thermostatFanMode", value: "3"]
-        events[2] == [name: "heatingSetpoint", value: 68.9, unit: "°F"]
-        events[3] == [name: "thermostatSetpoint", value: 68.9, unit: "°F"]
-    }
+        events[2] == [name: "heatingSetpoint", value: setpointF, unit: "°F"]
+        events[3] == [name: "thermostatSetpoint", value: setpointF, unit: "°F"]
 
-    def "processOperatingUpdate Fahrenheit gradualAdjustment"() {
-        given:
-        initState()
-        device.currentValue("thermostatMode") >> "heat"
-        device.currentValue("heatingSetpoint") >> 68.9
-        final def script = sandbox.run(
-                api: executorApi,
-                userSettingValues: [
-                        Input1: "topicRoot", topicRoot: "heatpump",
-                        Input2: "gradualAdjustment", gradualAdjustment: true,
-                        Input3: "debugLoggingEnabled", debugLoggingEnabled: true
-                ],
-                validationFlags: [
-                        Flags.DontRestrictGroovy,
-                        Flags.DontRunScript
-                ]
-        )
-
-        when:
-        def events = script.processOperatingUpdate(
-                ["power": "ON", "mode": "HEAT", "temperature": 17.5,
-                 "fan"  : "3", "vane": "4", "wideVane": "<<"]
-        )
-
-        then:
-        events[0] == [name: "thermostatMode", value: "heat"]
-        events[1] == [name: "thermostatFanMode", value: "3"]
-        events[2] == [name: "heatingSetpoint", value: 68.9, unit: "°F"]
-        events[3] == [name: "thermostatSetpoint", value: 68.9, unit: "°F"]
+        where:
+        temperature | setpointF
+        19.5        | 68.9
+        20.0        | 68.9
+        21.0        | 68.9
+        22.0        | 68.9
     }
 
     def "debouncedSetHeatingSetpoint Fahrenheit"() {
