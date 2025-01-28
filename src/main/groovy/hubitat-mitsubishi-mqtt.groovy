@@ -173,11 +173,13 @@ private List processTemperatureUpdate(Map payload) {
     BigDecimal tempC = new BigDecimal(payload.roomTemperature)
     String currentMode = device.currentValue('thermostatMode')
     // As the heat pump reports back temp changes, gradually adjust the intermediate setpoint
-    if (gradualAdjustment && state.intermediateSetpoint && shouldPublishSetpoint(currentMode)) {
+    boolean shouldPublish = shouldPublishSetpoint(currentMode)
+    log.trace "intermediateSetpoint: $state.intermediateSetpoint, shouldPublishSetpoint: ${shouldPublish}"
+    if (gradualAdjustment && state.intermediateSetpoint && shouldPublish) {
         def currentSetpoint = device.currentValue("heatingSetpoint")
         BigDecimal targetSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
         BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, targetSetpointC)
-        logTrace "currentSetpointC: $targetSetpointC, gradualSetpointC: $gradualSetpointC, intermediateSetpoint: $state.intermediateSetpoint"
+        logTrace "gradualSetpointC: $gradualSetpointC, targetSetpointC: $targetSetpointC"
         if (gradualSetpointC != state.intermediateSetpoint) {
             graduallyAdjustSetpointHeating(tempC, targetSetpointC)
         }
@@ -217,6 +219,7 @@ private List processOperatingUpdate(Map payload) {
         case 'dry':
             // `operating` is always false in these modes
             events << [name: 'thermostatOperatingState', value: thermostatOperatingStateMapping[mode]]
+            state.remove("intermediateSetpoint")
             break
         case 'cool':
             // Override the setpoint reported by the heat pump while we're gradually adjusting
@@ -254,7 +257,6 @@ private String getThermostatFanMode(String power, String mode) {
 }
 
 private void updateRunningMode(String lastRunningMode) {
-    state.remove("intermediateSetpoint")
     updateDataValue('lastRunningMode', lastRunningMode)
 }
 

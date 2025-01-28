@@ -186,7 +186,7 @@ class DriverTest extends Specification {
         )
 
         when:
-        state.intermediateSetpoint = intermediateSetpoint
+        state.intermediateSetpoint = intermediateSetpointBefore
         def events = script.processTemperatureUpdate([roomTemperature: tempC, operating: false])
 
         then:
@@ -195,12 +195,16 @@ class DriverTest extends Specification {
                 [name: "thermostatOperatingState", value: "idle"]
         ]
         publishes * mqtt.publish("heatpump/set", "{\"temperature\":${gradualTempC}}") // gradualAdjustment side-effect
+        state.intermediateSetpoint == intermediateSetpointAfter
 
         where:
-        tempC | gradualTempC | publishes | intermediateSetpoint
-        19.5  | 20.0         | 1         | 19.5
-        20.0  | 20.5         | 1         | 20.0
-        20.5  | 20.5         | 0         | null
+        tempC | gradualTempC | publishes | intermediateSetpointBefore | intermediateSetpointAfter
+        18.5  | 19.0         | 1         | 18.5                       | gradualTempC
+        19.0  | 19.5         | 1         | 19.0                       | gradualTempC
+        19.5  | 20.0         | 1         | 19.5                       | gradualTempC
+        20.0  | 20.5         | 1         | 20.0                       | null
+        20.5  | 20.5         | 0         | null                       | null
+        21.0  | 20.5         | 0         | null                       | null
     }
 
     def "processTemperatureUpdate() Fahrenheit"() {
