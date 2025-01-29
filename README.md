@@ -1,6 +1,15 @@
+<!--
+SPDX-FileCopyrightText: 2025 Randall Norviel <randallndev@gmail.com>
+SPDX-FileCopyrightText: 2025 Seth Kinast <seth@cogdev.net>
+
+SPDX-License-Identifier: MIT
+-->
+
 # Mitsubishi Heat Pump + MQTT Hubitat Driver
 
 This driver is designed to work with [mitsubishi_heatpump_mqtt_esp8266_esp32](https://github.com/SwiCago/HeatPump/tree/master/examples/mitsubishi_heatpump_mqtt_esp8266_esp32) from [SwiCago's HeatPump.cpp library](https://github.com/SwiCago/HeatPump). The library runs on an ESP8266 or ESP32 microcontroller connected to the heatpump via connector CN105 (just like the official Kumo Cloud device).
+
+I've started releasing new features in my fork, but props to [sethkinast](https://github.com/sethkinast/hubitat-mitsubishi-mqtt) for his original work.
 
 ## Features
 
@@ -21,7 +30,8 @@ This driver is designed to work with [mitsubishi_heatpump_mqtt_esp8266_esp32](ht
 
 ## Installation
 
-1. Add this device driver to Hubitat by going to **Drivers Code -> New Driver -> Import** and pasting [this importURL](https://raw.githubusercontent.com/randalln/hubitat-mitsubishi-mqtt/master/hubitat-mitsubishi-mqtt.groovy).
+1. Add this device driver to Hubitat by going to **Drivers Code -> New Driver -> Import** and pasting 
+[this importURL](https://raw.githubusercontent.com/randalln/hubitat-mitsubishi-mqtt/main/src/main/groovy/hubitat-mitsubishi-mqtt.groovy).
 2. Create a new Virtual Device by going to **Devices -> Add Device -> Virtual** and set the driver to `Mitsubishi Heat Pump + MQTT`.
 3. Edit the device and add the IP address of your MQTT broker and the heatpump topic you configured in the Arduino sketch.
 4. Check the device logs and you should see temperature reports being received and status updates flowing.

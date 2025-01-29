@@ -1,33 +1,20 @@
+// Copyright (c) 2022 Seth Kinast
+// SPDX-FileCopyrightText: 2025 Randall Norviel <randallndev@gmail.com>
+// SPDX-FileCopyrightText: 2022 Seth Kinast <seth@cogdev.net>
+//
+// SPDX-License-Identifier: MIT
+
 /**
  * Hubitat Device Driver
- * Mitsubishi Heat Pump + MQTT
+ * Mitsubishi Heat Pump MQTT
  * v1.1.4
- * https://github.com/sethkinast/hubitat-mitsubishi-mqtt/
+ *
+ * https://github.com/randalln/hubitat-mitsubishi-mqtt/
+ *
+ * This work is derived from the original project at https://github.com/sethkinast/hubitat-mitsubishi-mqtt/
  *
  * Control Mitsubishi heat pumps using HeatPump.cpp via MQTT
  * More info: https://github.com/SwiCago/HeatPump
- *
- * MIT License
- *
- * Copyright (c) 2022 Seth Kinast
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
  */
 
 import groovy.json.JsonOutput
@@ -75,10 +62,10 @@ import java.math.RoundingMode
 metadata {
     definition(
         name: 'Mitsubishi Heat Pump MQTT',
-        namespace: 'cogdev',
-        author: 'Seth Kinast <seth@cogdev.net>',
+        namespace: 'randalln',
+        author: 'Randall Norviel <randallndev@gmail.com>',
         importUrl:
-            'https://raw.githubusercontent.com/sethkinast/hubitat-mitsubishi-mqtt/master/hubitat-mitsubishi-mqtt.groovy'
+            'https://raw.githubusercontent.com/randalln/hubitat-mitsubishi-mqtt/main/src/main/groovy/hubitat-mitsubishi-mqtt.groovy'
     ) {
         capability 'Configuration'
         capability 'Initialize'

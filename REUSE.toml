@@ -1,0 +1,7 @@
+version = 1
+
+# Generated files
+[[annotations]]
+path = "gradle/wrapper/*"
+SPDX-FileCopyrightText = "2015-2021 original authors"
+SPDX-License-Identifier = "Apache-2.0"

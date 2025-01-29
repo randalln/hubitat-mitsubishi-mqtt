@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 Randall Norviel <randallndev@gmail.com>
+//
+// SPDX-License-Identifier: MIT
+
 import me.biocomp.hubitat_ci.api.common_api.DeviceWrapper
 import me.biocomp.hubitat_ci.api.common_api.InterfaceHelper
 import me.biocomp.hubitat_ci.api.common_api.Log
