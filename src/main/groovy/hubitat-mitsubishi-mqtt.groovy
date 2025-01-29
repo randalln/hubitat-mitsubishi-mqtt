@@ -174,6 +174,7 @@ private List processTemperatureUpdate(Map payload) {
     String currentMode = device.currentValue('thermostatMode')
 
     // As the heat pump reports back temp changes, gradually adjust the intermediate setpoint
+    // logDebug "${gradualAdjustment} ${state.intermediateSetpoint} ${payload.operating}"
     if (gradualAdjustment && state.intermediateSetpoint && payload.operating) {
         def currentSetpoint = device.currentValue("heatingSetpoint")
         BigDecimal targetSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
@@ -374,7 +375,7 @@ private def debouncedSetHeatingSetpoint(data) {
 private def graduallyAdjustSetpointHeating(BigDecimal tempC, BigDecimal setpointC) {
     BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, setpointC)
     if (gradualSetpointC != setpointC) {
-        log.info "Intermediate setpoint: ${tempC} < ${gradualSetpointC.floatValue()} > ${setpointC}"
+        log.info "Intermediate setpoint: ${tempC} < ${gradualSetpointC.floatValue()} > ${setpointC.floatValue()}"
         state.intermediateSetpoint = gradualSetpointC
         publish(['temperature': gradualSetpointC.floatValue()])
     } else {

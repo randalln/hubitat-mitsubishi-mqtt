@@ -16,6 +16,8 @@ class DriverTest extends Specification {
         trace(_) >> { args -> println(args) }
         debug(_) >> { args -> println(args) }
         info(_) >> { args -> println(args) }
+        warn(_) >> { args -> println(args) }
+        error(_) >> { args -> println(args) }
     }
     DeviceWrapper device
     Mqtt mqtt
