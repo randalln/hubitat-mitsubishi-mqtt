@@ -172,14 +172,12 @@ private List processTemperatureUpdate(Map payload) {
     BigDecimal temperature = new BigDecimal(convertTemperatureIfNeeded(payload.roomTemperature, 'C', 1))
     BigDecimal tempC = new BigDecimal(payload.roomTemperature)
     String currentMode = device.currentValue('thermostatMode')
+
     // As the heat pump reports back temp changes, gradually adjust the intermediate setpoint
-    boolean shouldPublish = shouldPublishSetpoint(currentMode)
-    log.trace "intermediateSetpoint: $state.intermediateSetpoint, shouldPublishSetpoint: ${shouldPublish}"
-    if (gradualAdjustment && state.intermediateSetpoint && shouldPublish) {
+    if (gradualAdjustment && state.intermediateSetpoint && payload.operating) {
         def currentSetpoint = device.currentValue("heatingSetpoint")
         BigDecimal targetSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
         BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, targetSetpointC)
-        logTrace "gradualSetpointC: $gradualSetpointC, targetSetpointC: $targetSetpointC"
         if (gradualSetpointC != state.intermediateSetpoint) {
             graduallyAdjustSetpointHeating(tempC, targetSetpointC)
         }
@@ -358,7 +356,10 @@ private def debouncedSetHeatingSetpoint(data) {
             ]
     )
     final String currentMode = device.currentValue('thermostatMode', true)
-    if (shouldPublishSetpoint(currentMode)) {
+    if (
+            ['pending heat', 'heat'].contains(currentMode) ||
+                    currentMode == 'auto' && getRunningMode() == 'heat' // won't work until HeatPump sends x09 payload
+    ) {
         if (gradualAdjustment) {
             BigDecimal currentTempC = convertInputToCelsius(device.currentValue('temperature'))
             graduallyAdjustSetpointHeating(currentTempC, setpointC)
@@ -370,13 +371,7 @@ private def debouncedSetHeatingSetpoint(data) {
     }
 }
 
-private boolean shouldPublishSetpoint(String currentMode) {
-    return ['pending heat', 'heat'].contains(currentMode) ||
-            currentMode == 'auto' && getRunningMode() == 'heat' // won't work until HeatPump sends x09 payload
-}
-
 private def graduallyAdjustSetpointHeating(BigDecimal tempC, BigDecimal setpointC) {
-    logTrace("tempC: ${tempC}, setpointC: ${setpointC}, intermediateSetpoint: ${state.intermediateSetpoint}")
     BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, setpointC)
     if (gradualSetpointC != setpointC) {
         log.info "Intermediate setpoint: ${tempC} < ${gradualSetpointC.floatValue()} > ${setpointC}"
@@ -410,21 +405,31 @@ private static def calculateGradualSetpointHeating(BigDecimal currentTempC, BigD
     }
 }
 
+/**
+ * Send "remoteTemp" to the heat pump, overriding the internal sensor. "0" is the magic value that tells the heat pump to use the internal sensor
+ * @param temperature
+ */
 void setRemoteTemperature(BigDecimal temperature) {
-    if (temperature != null) {
-        // 0 tells the code on the HP to switch to the internal sensor
-        BigDecimal remoteTemp = temperature == 0 ? 0 : convertToHalfCelsius(temperature)
-        def thermostatOperatingState = device.currentValue('thermostatOperatingState')
-        // Add or subtract 0.5C while operating to actually get it to turn off closer to the desired setpoint
-        if (remoteTemp != 0) {
+    temperature.with {
+        BigDecimal remoteTemperature = 0
+        BigDecimal remoteTempC = 0
+
+        if (it != 0) {
+            remoteTemperature = it.setScale(1, RoundingMode.HALF_UP)
+            remoteTempC = convertToHalfCelsius(it)
+            def thermostatOperatingState = device.currentValue('thermostatOperatingState')
+            // Add or subtract 0.5C while operating to actually get it to turn off closer to the desired setpoint
             if (thermostatOperatingState == "heating") {
-                remoteTemp += 0.5
+                remoteTempC += 0.5
             } else if (thermostatOperatingState == "cooling") {
-                remoteTemp -= 0.5
+                remoteTempC -= 0.5
             }
         }
-        sendEvent([name: 'remoteTemperature', value: remoteTemp])
-        publish(['remoteTemp': remoteTemp])
+
+        if (remoteTemperature && remoteTempC) {
+            sendEvent([name: 'remoteTemperature', value: remoteTemperature])
+            publish(['remoteTemp': remoteTempC.floatValue()])
+        }
     }
 }
 
@@ -550,11 +555,5 @@ void disableDebugLogging() {
 void logDebug(String msg) {
     if (debugLoggingEnabled) {
         log.debug msg
-    }
-}
-
-void logTrace(String msg) {
-    if (debugLoggingEnabled) {
-        log.trace msg
     }
 }

@@ -167,7 +167,7 @@ class DriverTest extends Specification {
         21.0 | 20 | 20.0 | null | 1
     }
 
-    def "processTemperatureUpdate() Celsius"() {
+    def "processTemperatureUpdate() Celsius heating"() {
         given:
         initState("C")
         device.currentValue("thermostatMode") >> "heat"
@@ -187,12 +187,12 @@ class DriverTest extends Specification {
 
         when:
         state.intermediateSetpoint = intermediateSetpointBefore
-        def events = script.processTemperatureUpdate([roomTemperature: tempC, operating: false])
+        def events = script.processTemperatureUpdate([roomTemperature: tempC, operating: true])
 
         then:
         events == [
                 [name: "temperature", value: tempC, unit: "°C", descriptionText: "Temperature is ${tempC}°C"],
-                [name: "thermostatOperatingState", value: "idle"]
+                [name: "thermostatOperatingState", value: "heating"]
         ]
         publishes * mqtt.publish("heatpump/set", "{\"temperature\":${gradualTempC}}") // gradualAdjustment side-effect
         state.intermediateSetpoint == intermediateSetpointAfter
@@ -207,7 +207,7 @@ class DriverTest extends Specification {
         21.0  | 20.5         | 0         | null                       | null
     }
 
-    def "processTemperatureUpdate() Fahrenheit"() {
+    def "processTemperatureUpdate() Fahrenheit heating"() {
         given:
         initState()
         device.currentValue("thermostatMode") >> "heat"
@@ -227,12 +227,47 @@ class DriverTest extends Specification {
 
         when:
         state.intermediateSetpoint = intermediateSetpoint
-        def events = script.processTemperatureUpdate([roomTemperature: tempC, operating: false])
+        def events = script.processTemperatureUpdate([roomTemperature: tempC, operating: true])
 
         then:
         events == [
                 [name: "temperature", value: tempF, unit: "°F", descriptionText: "Temperature is ${tempF}°F"],
-                [name: "thermostatOperatingState", value: "idle"]
+                [name: "thermostatOperatingState", value: "heating"]
+        ]
+        publishes * mqtt.publish("heatpump/set", "{\"temperature\":${gradualTempC}}") // gradualAdjustment side-effect
+
+        where:
+        tempC | tempF | gradualTempC | publishes | intermediateSetpoint
+        19.5  | 67.1  | 20.0         | 1         | 19.5
+        20.0  | 68.0  | 20.5         | 1         | 20.0
+        20.5  | 68.9  | 20.5         | 0         | null
+    }
+
+    def "processTemperatureUpdate() Fahrenheit became idle"() {
+        given:
+        initState()
+        device.currentValue("thermostatMode") >> "heat"
+        device.currentValue("heatingSetpoint") >> 68.9
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump",
+                        Input2: "gradualAdjustment", gradualAdjustment: false,
+                        Input3: "debugLoggingEnabled", debugLoggingEnabled: true
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        def events = script.processTemperatureUpdate([roomTemperature: tempC, operating: true])
+
+        then:
+        events == [
+                [name: "temperature", value: tempF, unit: "°F", descriptionText: "Temperature is ${tempF}°F"],
+                [name: "thermostatOperatingState", value: "heating"]
         ]
         publishes * mqtt.publish("heatpump/set", "{\"temperature\":${gradualTempC}}") // gradualAdjustment side-effect
 
@@ -508,5 +543,71 @@ class DriverTest extends Specification {
         then:
         1 * executorApi.sendEvent(["name": "heatingSetpoint", "value": 20.5, "unit": "°C"])
         1 * mqtt.publish("heatpump/set", "{\"temperature\":19.5}")
+    }
+
+    def "setRemoteTemperature Celsius"() {
+        given:
+        def thermostatOperatingState
+        initState("C")
+        device.currentValue("thermostatOperatingState") >> { thermostatOperatingState }
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump",
+                        Input2: "gradualAdjustment", gradualAdjustment: true,
+                        Input3: "debugLoggingEnabled", debugLoggingEnabled: true
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        thermostatOperatingState = operatingState
+        script.setRemoteTemperature(inputTemp)
+
+        then:
+        1 * executorApi.sendEvent(["name": "remoteTemperature", "value": remoteTemperature])
+        1 * mqtt.publish("heatpump/set", "{\"remoteTemp\":${remoteTempC}}")
+
+        where:
+        inputTemp | remoteTemperature | remoteTempC | operatingState
+        18.33     | 18.3              | 18.5        | "idle"
+        18.33     | 18.3              | 19.0        | "heating"
+        18.33     | 18.3              | 18.0        | "cooling"
+    }
+
+    def "setRemoteTemperature Fahrenheit"() {
+        given:
+        def thermostatOperatingState
+        initState()
+        device.currentValue("thermostatOperatingState") >> { thermostatOperatingState }
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump",
+                        Input2: "gradualAdjustment", gradualAdjustment: true,
+                        Input3: "debugLoggingEnabled", debugLoggingEnabled: true
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        thermostatOperatingState = operatingState
+        script.setRemoteTemperature(inputTemp)
+
+        then:
+        1 * executorApi.sendEvent(["name": "remoteTemperature", "value": remoteTemperature])
+        1 * mqtt.publish("heatpump/set", "{\"remoteTemp\":${remoteTempC}}")
+
+        where:
+        inputTemp | remoteTemperature | remoteTempC | operatingState
+        66.33     | 66.3              | 19.0        | "idle"
+        66.33     | 66.3              | 19.5        | "heating"
+        66.33     | 66.3              | 18.5        | "cooling"
     }
 }
