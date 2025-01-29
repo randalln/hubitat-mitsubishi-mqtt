@@ -7,7 +7,7 @@
 /**
  * Hubitat Device Driver
  * Mitsubishi Heat Pump MQTT
- * v1.1.4
+ * v1.2.0
  *
  * https://github.com/randalln/hubitat-mitsubishi-mqtt/
  *

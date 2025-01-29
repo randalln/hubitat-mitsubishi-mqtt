@@ -1,0 +1,16 @@
+{
+  "packageName": "Mitsubishi Heat Pump Drivers",
+  "author": "Randall Norviel",
+  "minimumHEVersion": "2.4.0",
+  "dateReleased": "2025-01-29",
+  "drivers": [
+    {
+      "id": "8e01e426-7886-44a9-9d0e-17bd2e44f0da",
+      "name": "Mitsubishi Heat Pump MQTT",
+      "namespace": "randalln",
+      "location": "https://raw.githubusercontent.com/randalln/hubitat-mitsubishi-mqtt/main/src/main/groovy/hubitat-mitsubishi-mqtt.groovy",
+      "required": true,
+      "version": "1.2.0"
+    }
+  ]
+}
