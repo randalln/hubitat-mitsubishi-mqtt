@@ -7,7 +7,7 @@
 /**
  * Hubitat Device Driver
  * Mitsubishi Heat Pump MQTT
- * v1.2.0
+ * v1.2.1
  *
  * https://github.com/randalln/hubitat-mitsubishi-mqtt/
  *
@@ -406,11 +406,14 @@ void setRemoteTemperature(BigDecimal temperature) {
             remoteTemperature = it.setScale(1, RoundingMode.HALF_UP)
             remoteTempC = convertToHalfCelsius(it)
             def thermostatOperatingState = device.currentValue('thermostatOperatingState')
-            // Add or subtract 0.5C while operating to actually get it to turn off closer to the desired setpoint
-            if (thermostatOperatingState == "heating") {
-                remoteTempC += 0.5
-            } else if (thermostatOperatingState == "cooling") {
-                remoteTempC -= 0.5
+            // Add or subtract 0.5C while operating to actually get it to turn off closer to the desired setpoint, but only after the
+            // gradualAdjustment period has ended
+            if (!state.intermediateSetpoint) {
+                if (thermostatOperatingState == "heating") {
+                    remoteTempC += 0.5
+                } else if (thermostatOperatingState == "cooling") {
+                    remoteTempC -= 0.5
+                }
             }
         }
 
