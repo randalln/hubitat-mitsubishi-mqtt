@@ -2,6 +2,11 @@ version = 1
 
 # Generated files
 [[annotations]]
+path = "gradlew*"
+SPDX-FileCopyrightText = "2015-2021 original authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
 path = "gradle/wrapper/*"
 SPDX-FileCopyrightText = "2015-2021 original authors"
 SPDX-License-Identifier = "Apache-2.0"
