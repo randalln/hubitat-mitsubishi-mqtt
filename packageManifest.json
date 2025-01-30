@@ -10,7 +10,7 @@
       "namespace": "randalln",
       "location": "https://raw.githubusercontent.com/randalln/hubitat-mitsubishi-mqtt/main/src/main/groovy/hubitat-mitsubishi-mqtt.groovy",
       "required": true,
-      "version": "1.2.0"
+      "version": "1.2.1"
     }
   ],
   "releaseNotes": "[v1.2.1] Add or subtract 0.5C while operating to actually get it to turn off closer to the desired setpoint, but only after the gradualAdjustment period has ended"
