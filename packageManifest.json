@@ -2,7 +2,7 @@
   "packageName": "Mitsubishi Heat Pump Drivers",
   "author": "Randall Norviel",
   "minimumHEVersion": "2.4.0",
-  "dateReleased": "2025-01-30",
+  "dateReleased": "2025-01-31",
   "drivers": [
     {
       "id": "8e01e426-7886-44a9-9d0e-17bd2e44f0da",
@@ -13,5 +13,5 @@
       "version": "1.2.1"
     }
   ],
-  "releaseNotes": "[v1.2.1] Add or subtract 0.5C while operating to actually get it to turn off closer to the desired setpoint, but only after the gradualAdjustment period has ended"
+  "releaseNotes": "[v1.2.2] Apply gradualAdjustment logic when turning the heat pump on"
 }

@@ -624,4 +624,88 @@ class DriverTest extends Specification {
         66.33     | 66.3              | 19.0        | "heating"      | 19.0
         66.33     | 66.3              | 19.0        | "cooling"      | 19.0
     }
+
+    def setThermostatMode() {
+        given:
+        initState()
+        BigDecimal setpoint
+        BigDecimal temp
+        device.currentValue("coolingSetpoint") >> { setpoint }
+        device.currentValue("heatingSetpoint") >> { setpoint }
+        device.currentValue("temperature") >> { temp }
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump",
+                        Input2: "gradualAdjustment", gradualAdjustment: false,
+                        Input3: "debugLoggingEnabled", debugLoggingEnabled: true
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        setpoint = setpointF
+        temp = currentTemp
+        script.setThermostatMode(mode)
+
+        then:
+        1 * mqtt.publish("heatpump/set", "{\"power\":\"ON\",\"mode\":\"${hpMode}\",\"temperature\":${setpointC}}")
+        state.intermediateSetpoint == null
+
+        where:
+        mode   | hpMode | currentTemp | setpointF | setpointC
+        "heat" | "HEAT" | 64.0        | 67.1      | 19.5
+        "heat" | "HEAT" | 64.0        | 68.0      | 20.0
+        "heat" | "HEAT" | 67.0        | 68.0      | 20.0
+        "heat" | "HEAT" | 69.0        | 68.0      | 20.0
+        "cool" | "COOL" | 70.0        | 67.1      | 19.5
+        "cool" | "COOL" | 70.0        | 66.2      | 19.0
+        "cool" | "COOL" | 67.0        | 66.2      | 19.0
+        "cool" | "COOL" | 65.0        | 66.2      | 19.0
+    }
+
+    def "setThermostatMode gradualAdjustment"() {
+        given:
+        initState()
+        BigDecimal setpoint
+        BigDecimal temp
+        device.currentValue("coolingSetpoint") >> { setpoint }
+        device.currentValue("heatingSetpoint") >> { setpoint }
+        device.currentValue("temperature") >> { temp }
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump",
+                        Input2: "gradualAdjustment", gradualAdjustment: true,
+                        Input3: "debugLoggingEnabled", debugLoggingEnabled: true
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        setpoint = heatingSetpoint
+        temp = currentTemp
+        script.setThermostatMode(mode)
+
+        then:
+        1 * mqtt.publish("heatpump/set", "{\"power\":\"ON\",\"mode\":\"${hpMode}\",\"temperature\":${setpointC}}")
+        state.intermediateSetpoint == intermediateSetpoint
+
+        where:
+        mode   | hpMode | currentTemp | heatingSetpoint | setpointC | intermediateSetpoint
+        "heat" | "HEAT" | 64.0        | 67.1            | 18.5      | setpointC
+        "heat" | "HEAT" | 64.0        | 68.0            | 18.5      | setpointC
+        "heat" | "HEAT" | 67.0        | 68.0            | 20.0      | null
+        "heat" | "HEAT" | 69.0        | 68.0            | 20.0      | null
+        "cool" | "COOL" | 70.0        | 67.1            | 19.5      | null // TODO: Implement gradual cooling
+        "cool" | "COOL" | 70.0        | 66.2            | 19.0      | null
+        "cool" | "COOL" | 67.0        | 66.2            | 19.0      | null
+        "cool" | "COOL" | 65.0        | 66.2            | 19.0      | null
+    }
 }

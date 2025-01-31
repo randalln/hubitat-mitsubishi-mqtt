@@ -7,7 +7,7 @@
 /**
  * Hubitat Device Driver
  * Mitsubishi Heat Pump MQTT
- * v1.2.1
+ * v1.2.2
  *
  * https://github.com/randalln/hubitat-mitsubishi-mqtt/
  *
@@ -163,12 +163,14 @@ private List processTemperatureUpdate(Map payload) {
     // As the heat pump reports back temp changes, gradually adjust the intermediate setpoint
     // logDebug "${gradualAdjustment} ${state.intermediateSetpoint} ${payload.operating}"
     if (gradualAdjustment && state.intermediateSetpoint && payload.operating) {
-        def currentSetpoint = device.currentValue("heatingSetpoint")
-        BigDecimal targetSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
-        BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, targetSetpointC)
-        if (gradualSetpointC != state.intermediateSetpoint) {
-            graduallyAdjustSetpointHeating(tempC, targetSetpointC)
-        }
+        if (currentMode == "heat") {
+            def currentSetpoint = device.currentValue("heatingSetpoint")
+            BigDecimal targetSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
+            BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, targetSetpointC)
+            if (gradualSetpointC != state.intermediateSetpoint) {
+                graduallyAdjustSetpointHeating(tempC, targetSetpointC)
+            }
+        } // TODO: cool
     }
 
     return [
@@ -210,7 +212,7 @@ private List processOperatingUpdate(Map payload) {
         case 'cool':
             // Override the setpoint reported by the heat pump while we're gradually adjusting
             if (gradualAdjustment) {
-                temperature = device.currentValue('heatingSetpoint')
+                temperature = device.currentValue('coolingSetpoint')
             }
             events << [name: 'coolingSetpoint', value: temperature, unit: getTemperatureUnit()]
             events << [name: 'thermostatSetpoint', value: temperature, unit: getTemperatureUnit()]
@@ -361,17 +363,8 @@ private def debouncedSetHeatingSetpoint(data) {
 
 private def graduallyAdjustSetpointHeating(BigDecimal tempC, BigDecimal setpointC) {
     BigDecimal gradualSetpointC = calculateGradualSetpointHeating(tempC, setpointC)
-    if (gradualSetpointC != setpointC) {
-        log.info "Intermediate setpoint: ${tempC} < ${gradualSetpointC.floatValue()} > ${setpointC.floatValue()}"
-        state.intermediateSetpoint = gradualSetpointC
-        publish(['temperature': gradualSetpointC.floatValue()])
-    } else {
-        if (state.intermediateSetpoint) {
-            log.info "Setpoint reached target setpoint: ${gradualSetpointC.floatValue()}"
-            state.remove("intermediateSetpoint")
-        }
-        publish(['temperature': gradualSetpointC.floatValue()])
-    }
+    setStateIntermediateSetpoint(gradualSetpointC, setpointC)
+    publish(['temperature': gradualSetpointC.floatValue()])
 
     return gradualSetpointC
 }
@@ -390,6 +383,18 @@ private static def calculateGradualSetpointHeating(BigDecimal currentTempC, BigD
         return currentTemp + 0.5
     } else {
         return newSetpoint
+    }
+}
+
+private void setStateIntermediateSetpoint(BigDecimal gradualSetpointC,  BigDecimal targetSetpointC) {
+    if (gradualSetpointC != targetSetpointC) {
+        log.info "Gradual setpoint: ${gradualSetpointC.floatValue()}, target setpoint: ${targetSetpointC.floatValue()}"
+        state.intermediateSetpoint = gradualSetpointC
+    } else {
+        if (state.intermediateSetpoint) {
+            log.info "Gradual setpoint reached target setpoint: ${gradualSetpointC.floatValue()}"
+            state.remove("intermediateSetpoint")
+        }
     }
 }
 
@@ -435,7 +440,8 @@ void setThermostatMode(String mode) {
         case 'heat':
             publish(powerOn([
                 'mode': mappedMode,
-                'temperature': convertToHalfCelsius(getSetpointForMode(mode))
+                'temperature': gradualAdjustment ? calculateGradualSetpoint(mode).floatValue() :
+                        convertToHalfCelsius(getSetpointForMode(mode)).floatValue()
             ]))
             break
         case 'fan':
@@ -443,6 +449,20 @@ void setThermostatMode(String mode) {
             publish(powerOn(['mode': mappedMode]))
             break
     }
+}
+
+private def calculateGradualSetpoint(String mode) {
+    BigDecimal gradualSetpointC = convertToHalfCelsius(getSetpointForMode(mode))
+
+    if (mode == "heat") {
+        BigDecimal currentTempC = convertInputToCelsius(device.currentValue('temperature'))
+        def currentSetpoint = device.currentValue("heatingSetpoint")
+        BigDecimal targetSetpointC = getTemperatureScale() == 'C' ? currentSetpoint : fahrenheitToCelsius(currentSetpoint)
+        gradualSetpointC = calculateGradualSetpointHeating(currentTempC, targetSetpointC)
+        setStateIntermediateSetpoint(gradualSetpointC, targetSetpointC)
+    }
+
+    return gradualSetpointC
 }
 
 void setThermostatFanMode(String fanMode) {
