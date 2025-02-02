@@ -335,8 +335,8 @@ void setHeatingSetpoint(BigDecimal setpoint) {
     runInMillis(2000, "debouncedSetHeatingSetpoint", [data: [setpoint: setpoint]])
 }
 
-private def debouncedSetHeatingSetpoint(data) {
-    // TODO: Figure out why the unit test requires data.data.setpoint instead
+private void debouncedSetHeatingSetpoint(Map map) {
+    Map data = map.data ?: map // TODO: The hubitat_ci (test) library passes the outer map instead
     final BigDecimal setpointC = convertToHalfCelsius(data.setpoint)
     sendEvent(
             [

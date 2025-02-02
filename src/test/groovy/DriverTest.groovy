@@ -27,7 +27,6 @@ class DriverTest extends Specification {
     Mqtt mqtt
     InterfaceHelper interfaceHelper
     DeviceExecutor executorApi
-    @Shared
     Map state = [:]
 
     void initState(String temperatureScale = "F") {

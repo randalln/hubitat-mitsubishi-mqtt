@@ -6,5 +6,5 @@
 
 # The runtimes and libraries are so outdated that I run tests in a docker container
 docker run -it --rm --mount type=bind,src=.,dst=/home/gradle/project \
-       -w /home/gradle/project gradle:6-jdk8 \
+       -w /home/gradle/project gradle:8-jdk11 \
        gradle test # To view (HTML) test reports, run "bash" and this gradle task from there
