@@ -10,7 +10,7 @@
       "namespace": "randalln",
       "location": "https://raw.githubusercontent.com/randalln/hubitat-mitsubishi-mqtt/main/src/main/groovy/hubitat-mitsubishi-mqtt.groovy",
       "required": true,
-      "version": "1.2.1"
+      "version": "1.2.2"
     }
   ],
   "releaseNotes": "[v1.2.2] Apply gradualAdjustment logic when turning the heat pump on"
