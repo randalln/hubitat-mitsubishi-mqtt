@@ -18,9 +18,10 @@ I've started releasing new features in my fork, but props to [sethkinast](https:
 - Can detect when the heatpumps are actively heating/cooling and update Hubitat Dashboard
 - Reports room temperature back from the heatpump for use in automations
 - Supports all heatpump modes and fan speeds
-- Supports remote temperature, because internal heat pump sensors can be inaccurate (all of mine are)
-- Supports gradual temperature adjustment with the goal of allowing variable speed heat pumps to run at lower capacity (I'd love confirmation of 
-  this efficiency)
+- Supports `remoteTemperature`, because internal heat pump sensors can be inaccurate (all of mine are)
+- Preference for `Gradual Temperature Adjustment` with the goal of allowing variable speed heat pumps to run at lower capacity (I'd love 
+  real world confirmation of this)
+- Preference to `Adjust setpoint to avoid an immediate cycle when turned on`, which just adjusts the initial setpoint by 1C for one minute
 
 ## Prerequisites
 
@@ -54,6 +55,7 @@ Make sure Debug Logging is on for the device, then check its logs.
 - MQTT connection errors mean that the hub can't connect to MQTT. You might need to allow traffic to pass on the MQTT port (1883 by default)
 - If MQTT connects but you get no events from the heatpump, make sure your topic is set to the same topic you used in `mitsubishi_heatpump_mqtt_esp8266_esp32.h`. The settings and status topics are extrapolated from this topic, so if your topic is `climate/office`, you should have set `climate/office`, `climate/office/status`, and `climate/office/set` in the header file.
 - If you're sure that the ESP is on the network, you can turn on debug mode to have it dump every packet it gets so you can verify its behavior. Send a message to the `debug_set_topic` you set in your sketch header:
+- When various preferences are enabled, you can monitor the relevant state variables on the device page.
 
 ```bash
 $ mosquitto_pub -t climate/office/debug/set -m on

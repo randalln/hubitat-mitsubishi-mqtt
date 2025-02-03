@@ -2,7 +2,7 @@
   "packageName": "Mitsubishi Heat Pump Drivers",
   "author": "Randall Norviel",
   "minimumHEVersion": "2.4.0",
-  "dateReleased": "2025-01-31",
+  "dateReleased": "2025-02-03",
   "drivers": [
     {
       "id": "8e01e426-7886-44a9-9d0e-17bd2e44f0da",
@@ -10,8 +10,8 @@
       "namespace": "randalln",
       "location": "https://raw.githubusercontent.com/randalln/hubitat-mitsubishi-mqtt/main/src/main/groovy/hubitat-mitsubishi-mqtt.groovy",
       "required": true,
-      "version": "1.2.2"
+      "version": "1.3.0"
     }
   ],
-  "releaseNotes": "[v1.2.2] Apply gradualAdjustment logic when turning the heat pump on"
+  "releaseNotes": "[v1.3.0] Adjust setpoint to avoid an immediate cycle when turned on"
 }
