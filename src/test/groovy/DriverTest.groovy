@@ -789,13 +789,13 @@ class DriverTest extends Specification {
         result == setbackC
 
         where:
-        currentTempF | setpointF | setbackC | mode
-        64.8         | 68.0      | 17.0     | "heat"
-        67.8         | 68.0      | 19.0     | "heat"
-        68.0         | 68.0      | 19.0     | "heat"
-        69.0         | 68.9      | 19.5     | "heat"
-        75.3         | 68.0      | 25.0     | "cool"
-        68.2         | 68.0      | 21.0     | "cool"
+        currentTempF | setpointF | setbackC      | mode
+        64.8         | 68.0      | 18.0 - 2.0 | "heat"
+        67.8         | 68.0      | 20.0 - 2.0 | "heat"
+        68.0         | 68.0      | 20.0 - 2.0 | "heat"
+        69.0         | 68.9      | 20.5 - 2.0 | "heat"
+        75.3         | 68.0      | 24.0 + 2.0 | "cool"
+        68.2         | 68.0      | 20.0 + 2.0 | "cool"
     }
 
     def "setThermostatMode avoidImmediateCycle"() {
@@ -832,14 +832,14 @@ class DriverTest extends Specification {
 
         where:
         mode   | hpMode | currentTemp | setpointF | setpointC
-        "heat" | "HEAT" | 64.4        | 67.1      | 17.0
-        "heat" | "HEAT" | 64.0        | 68.0      | 17.0
-        "heat" | "HEAT" | 67.0        | 68.0      | 18.5
-        "heat" | "HEAT" | 69.0        | 68.0      | 19.5
-        "cool" | "COOL" | 70.0        | 67.1      | 22.0
-        "cool" | "COOL" | 70.0        | 66.2      | 22.0
-        "cool" | "COOL" | 67.0        | 66.2      | 20.5
-        "cool" | "COOL" | 65.0        | 66.2      | 19.5
+        "heat" | "HEAT" | 64.4        | 67.1      | 18.0 - 2.0
+        "heat" | "HEAT" | 64.0        | 68.0      | 18.0 - 2.0
+        "heat" | "HEAT" | 67.0        | 68.0      | 19.5 - 2.0
+        "heat" | "HEAT" | 69.0        | 68.0      | 20.5 - 2.0
+        "cool" | "COOL" | 70.0        | 67.1      | 21.0 + 2.0
+        "cool" | "COOL" | 70.0        | 66.2      | 21.0 + 2.0
+        "cool" | "COOL" | 67.0        | 66.2      | 19.5 + 2.0
+        "cool" | "COOL" | 65.0        | 66.2      | 18.5 + 2.0
     }
 
     def "restore setpoint after avoidImmediateCycle"() {
