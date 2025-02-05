@@ -58,7 +58,7 @@ import java.math.RoundingMode
 ]
 @Field static List vanePositions = ['AUTO', '1', '2', '3', '4', '5', 'SWING']
 @Field static List wideVanePositions = ['<<', '<', '|', '>', '>>', '<>', 'SWING']
-@Field static BigDecimal avoidImmediateCycleDegreesC = 1.0
+@Field static BigDecimal avoidImmediateCycleDegreesC = 2.0
 
 metadata {
     definition(
