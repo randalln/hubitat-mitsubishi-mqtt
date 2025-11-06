@@ -874,9 +874,669 @@ class DriverTest extends Specification {
 
         where:
         thermostatMode | lastRunningMode | setpointType      | restoredSetpoint
-        "heat"         | thermostatMode  | "heatingSetpoint" | 68.9
-        "cool"         | thermostatMode  | "coolingSetpoint" | 68.9
+        "heat"         | "heat"          | "heatingSetpoint" | 68.9
+        "cool"         | "cool"          | "coolingSetpoint" | 68.9
         "auto"         | "heat"          | "heatingSetpoint" | 68.0
         "auto"         | "cool"          | "coolingSetpoint" | 68.0
+    }
+
+    // Can't get test coverage details, so let Claude generate some more tests.
+    def "getThermostatMode"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        expect:
+        script.getThermostatMode(power, mode) == expectedMode
+
+        where:
+        power | mode   | expectedMode
+        "OFF" | "HEAT" | "off"
+        "OFF" | "COOL" | "off"
+        "ON"  | "HEAT" | "heat"
+        "ON"  | "COOL" | "cool"
+        "ON"  | "FAN"  | "fan"
+        "ON"  | "DRY"  | "dry"
+        "ON"  | "AUTO" | "auto"
+    }
+
+    def "getThermostatFanMode"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        expect:
+        script.getThermostatFanMode(power, fanMode) == expectedMode
+
+        where:
+        power | fanMode | expectedMode
+        "OFF" | "AUTO"  | "auto"
+        "OFF" | "QUIET" | "auto"
+        "OFF" | "1"     | "auto"
+        "ON"  | "AUTO"  | "auto"
+        "ON"  | "QUIET" | "circulate"
+        "ON"  | "1"     | "1"
+        "ON"  | "2"     | "2"
+        "ON"  | "3"     | "3"
+        "ON"  | "4"     | "4"
+    }
+
+    def "processOperatingUpdate off mode"() {
+        given:
+        initState()
+        device.currentValue("thermostatMode") >> "off"
+        final def script = sandbox.run(
+                api: executorApi,
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        def events = script.processOperatingUpdate(
+                ["power": "OFF", "mode": "HEAT", "temperature": 20.0,
+                 "fan"  : "AUTO", "vane": "AUTO", "wideVane": "|"]
+        )
+
+        then:
+        events[0] == [name: "thermostatMode", value: "off"]
+        events[1] == [name: "thermostatFanMode", value: "auto"]
+        events[2] == [name: "thermostatOperatingState", value: "idle"]
+        state.intermediateSetpoint == null
+        state.restoredSetpoint == null
+    }
+
+    def "processOperatingUpdate fan mode"() {
+        given:
+        initState()
+        device.currentValue("thermostatMode") >> "fan"
+        final def script = sandbox.run(
+                api: executorApi,
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        def events = script.processOperatingUpdate(
+                ["power": "ON", "mode": "FAN", "temperature": 20.0,
+                 "fan"  : "3", "vane": "AUTO", "wideVane": "|"]
+        )
+
+        then:
+        events[0] == [name: "thermostatMode", value: "fan"]
+        events[1] == [name: "thermostatFanMode", value: "3"]
+        events[2] == [name: "thermostatOperatingState", value: "fan only"]
+        state.intermediateSetpoint == null
+    }
+
+    def "processOperatingUpdate dry mode"() {
+        given:
+        initState()
+        device.currentValue("thermostatMode") >> "dry"
+        final def script = sandbox.run(
+                api: executorApi,
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        def events = script.processOperatingUpdate(
+                ["power": "ON", "mode": "DRY", "temperature": 20.0,
+                 "fan"  : "AUTO", "vane": "AUTO", "wideVane": "|"]
+        )
+
+        then:
+        events[0] == [name: "thermostatMode", value: "dry"]
+        events[1] == [name: "thermostatFanMode", value: "auto"]
+        events[2] == [name: "thermostatOperatingState", value: "cooling"]
+        state.intermediateSetpoint == null
+    }
+
+    def "processOperatingUpdate auto mode"() {
+        given:
+        initState()
+        device.currentValue("thermostatMode") >> "auto"
+        device.currentValue("thermostatSetpoint") >> 68.0
+        final def script = sandbox.run(
+                api: executorApi,
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        def events = script.processOperatingUpdate(
+                ["power": "ON", "mode": "AUTO", "temperature": 20.0,
+                 "fan"  : "AUTO", "vane": "AUTO", "wideVane": "|"]
+        )
+
+        then:
+        events[0] == [name: "thermostatMode", value: "auto"]
+        events[1] == [name: "thermostatFanMode", value: "auto"]
+        events[2] == [name: "thermostatSetpoint", value: 68.0, unit: "°F"]
+    }
+
+    def "vane command"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.vane(position)
+
+        then:
+        1 * executorApi.sendEvent([name: 'vane', value: position])
+        1 * mqtt.publish("heatpump/set", "{\"vane\":\"${position}\"}")
+
+        where:
+        position << ['AUTO', '1', '2', '3', '4', '5', 'SWING']
+    }
+
+    def "wideVane command"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.wideVane(position)
+
+        then:
+        1 * executorApi.sendEvent([name: 'wideVane', value: position])
+        1 * mqtt.publish("heatpump/set", "{\"wideVane\":\"${position}\"}")
+
+        where:
+        position << ['<<', '<', '|', '>', '>>', '<>', 'SWING']
+    }
+
+    def "auto command"() {
+        given:
+        initState()
+        device.currentValue("thermostatSetpoint") >> 68.0
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.auto()
+
+        then:
+        1 * mqtt.publish("heatpump/set", _)
+    }
+
+    def "cool command"() {
+        given:
+        initState()
+        device.currentValue("coolingSetpoint") >> 68.0
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.cool()
+
+        then:
+        1 * executorApi.sendEvent([name: 'thermostatOperatingState', value: 'pending cool'])
+        1 * mqtt.publish("heatpump/set", _)
+    }
+
+    def "heat command"() {
+        given:
+        initState()
+        device.currentValue("heatingSetpoint") >> 68.0
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.heat()
+
+        then:
+        1 * executorApi.sendEvent([name: 'thermostatOperatingState', value: 'pending heat'])
+        1 * mqtt.publish("heatpump/set", _)
+    }
+
+    def "dry command"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.dry()
+
+        then:
+        1 * mqtt.publish("heatpump/set", "{\"power\":\"ON\",\"mode\":\"DRY\"}")
+    }
+
+    def "off command"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.off()
+
+        then:
+        1 * mqtt.publish("heatpump/set", "{\"power\":\"OFF\"}")
+    }
+
+    def "emergencyHeat command"() {
+        given:
+        initState()
+        device.currentValue("heatingSetpoint") >> 68.0
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump",
+                        Input3: "debugLoggingEnabled", debugLoggingEnabled: true
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.emergencyHeat()
+
+        then:
+        1 * executorApi.sendEvent([name: 'thermostatOperatingState', value: 'pending heat'])
+        1 * mqtt.publish("heatpump/set", _)
+    }
+
+    def "fanAuto command"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.fanAuto()
+
+        then:
+        1 * mqtt.publish("heatpump/set", "{\"power\":\"ON\",\"fan\":\"AUTO\"}")
+    }
+
+    def "fanCirculate command"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.fanCirculate()
+
+        then:
+        1 * mqtt.publish("heatpump/set", "{\"power\":\"ON\",\"fan\":\"QUIET\"}")
+    }
+
+    def "fanOn command"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.fanOn()
+
+        then:
+        1 * mqtt.publish("heatpump/set", "{\"power\":\"ON\",\"mode\":\"FAN\"}")
+    }
+
+    def "setThermostatFanMode numeric speeds"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.setThermostatFanMode(fanMode)
+
+        then:
+        1 * mqtt.publish("heatpump/set", "{\"power\":\"ON\",\"fan\":\"${fanMode}\"}")
+
+        where:
+        fanMode << ['1', '2', '3', '4']
+    }
+
+    def "setThermostatFanMode quiet"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump"
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.setThermostatFanMode('quiet')
+
+        then:
+        1 * mqtt.publish("heatpump/set", "{\"power\":\"ON\",\"fan\":\"QUIET\"}")
+    }
+
+    def "setCoolingSetpoint"() {
+        given:
+        initState()
+        device.currentValue("thermostatMode", *_) >> "cool"
+        device.currentValue("temperature") >> 70.0
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump",
+                        Input2: "gradualAdjustment", gradualAdjustment: false
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.setCoolingSetpoint(68.0)
+        // Simulate the debounced call
+        script.debouncedSetSetpoint([data: [setpoint: 68.0, thermostatMode: "cool"]])
+
+        then:
+        1 * executorApi.sendEvent(["name": "coolingSetpoint", "value": 68.0, "unit": "°F"])
+        1 * mqtt.publish("heatpump/set", "{\"temperature\":20.0}")
+    }
+
+    def "setHeatingSetpoint"() {
+        given:
+        initState()
+        device.currentValue("thermostatMode", *_) >> "heat"
+        device.currentValue("temperature") >> 65.0
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump",
+                        Input2: "gradualAdjustment", gradualAdjustment: false
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.setHeatingSetpoint(68.0)
+        // Simulate the debounced call
+        script.debouncedSetSetpoint([data: [setpoint: 68.0, thermostatMode: "heat"]])
+
+        then:
+        1 * executorApi.sendEvent(["name": "heatingSetpoint", "value": 68.0, "unit": "°F"])
+        1 * mqtt.publish("heatpump/set", "{\"temperature\":20.0}")
+    }
+
+    def "processTemperatureUpdate not operating"() {
+        given:
+        initState()
+        device.currentValue("thermostatMode") >> "heat"
+        final def script = sandbox.run(
+                api: executorApi,
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        def events = script.processTemperatureUpdate([roomTemperature: 20.0, operating: false])
+
+        then:
+        events[1] == [name: "thermostatOperatingState", value: "idle"]
+    }
+
+    def "processTemperatureUpdate fan mode"() {
+        given:
+        initState()
+        device.currentValue("thermostatMode") >> "fan"
+        final def script = sandbox.run(
+                api: executorApi,
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        def events = script.processTemperatureUpdate([roomTemperature: 20.0, operating: false])
+
+        then:
+        events[1] == [name: "thermostatOperatingState", value: "fan only"]
+    }
+
+    def "roundToHalf"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        expect:
+        script.roundToHalf(input) == output
+
+        where:
+        input | output
+        19.0  | 19.0
+        19.2  | 19.0
+        19.25 | 19.5
+        19.3  | 19.5
+        19.5  | 19.5
+        19.7  | 19.5
+        19.75 | 20.0
+        19.8  | 20.0
+    }
+
+    def "getSetpointForMode"() {
+        given:
+        initState()
+        device.currentValue("heatingSetpoint") >> 70.0
+        device.currentValue("coolingSetpoint") >> 68.0
+        device.currentValue("thermostatSetpoint") >> 69.0
+        final def script = sandbox.run(
+                api: executorApi,
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        expect:
+        script.getSetpointForMode(mode) == setpoint
+
+        where:
+        mode   | setpoint
+        "heat" | 70.0
+        "cool" | 68.0
+        "auto" | 69.0
+    }
+
+    def "mqttClientStatus error triggers reconnect"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input3: "debugLoggingEnabled", debugLoggingEnabled: true
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.mqttClientStatus("Error: Connection failed")
+
+        then:
+        1 * mqtt.disconnect()
+        state.connectDelay >= 0
+    }
+
+    def "mqttClientStatus success subscribes"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                userSettingValues: [
+                        Input1: "topicRoot", topicRoot: "heatpump",
+                        Input3: "debugLoggingEnabled", debugLoggingEnabled: true
+                ],
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        state.connectDelay = 5
+        script.mqttClientStatus("Connected")
+
+        then:
+        state.connectDelay == null
+    }
+
+    def "configure sets initial values"() {
+        given:
+        initState()
+        final def script = sandbox.run(
+                api: executorApi,
+                validationFlags: [
+                        Flags.DontRestrictGroovy,
+                        Flags.DontRunScript
+                ]
+        )
+
+        when:
+        script.configure()
+
+        then:
+        /*
+        data.lastRunningMode == "cool"
+        1 * executorApi.sendEvent([name: 'temperature', value: 68.0, unit: '°F'])
+        1 * executorApi.sendEvent([name: 'thermostatSetpoint', value: 70.0, unit: '°F'])
+        1 * executorApi.sendEvent([name: 'heatingSetpoint', value: 70.0, unit: '°F'])
+        1 * executorApi.sendEvent([name: 'coolingSetpoint', value: 70.0, unit: '°F'])
+         */
+        1 * executorApi.sendEvent([name: 'thermostatOperatingState', value: 'idle'])
+        1 * executorApi.sendEvent([name: 'vane', value: 'AUTO'])
+        1 * executorApi.sendEvent([name: 'wideVane', value: '|'])
     }
 }

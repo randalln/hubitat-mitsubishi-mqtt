@@ -8,12 +8,10 @@ plugins {
 
 repositories {
     mavenCentral()
-
-    // hubitat_ci repository
-    maven {
-        url = "https://biocomp.pkgs.visualstudio.com/HubitatCiRelease/_packaging/hubitat_ci_feed@Release/maven/v1"
-    }
+    mavenLocal()
 }
+
+Boolean isDocker = new File("/.dockerenv").exists()
 
 dependencies {
     implementation("org.codehaus.groovy:groovy-all:2.5.13")
@@ -21,8 +19,10 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation(platform("org.spockframework:spock-bom:2.4-M5-groovy-2.5"))
     testImplementation("org.spockframework:spock-core")
-    testImplementation("me.biocomp.hubitat_ci:hubitat_ci:0.17")
-    testImplementation(group: "cglib", name: "cglib-nodep", version: "3.3.0")
+    if (isDocker) {
+        testImplementation("me.biocomp.hubitat_ci:hubitat_ci:0.45") // See runtests.sh for details about this library
+        testImplementation(group: "cglib", name: "cglib-nodep", version: "3.3.0")
+    }
 }
 
 test {

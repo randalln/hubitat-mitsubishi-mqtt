@@ -192,6 +192,7 @@ private List processTemperatureUpdate(Map payload) {
 private List processOperatingUpdate(Map payload) {
     BigDecimal temperature = new BigDecimal(convertTemperatureIfNeeded(payload.temperature, 'C', 1))
     String mode = getThermostatMode(payload.power, payload.mode)
+    String rawMode = thermostatModeMapping[payload.mode]
     String fanMode = getThermostatFanMode(payload.power, payload.fan)
 
     List events = [
@@ -200,37 +201,38 @@ private List processOperatingUpdate(Map payload) {
     ]
 
     // in FAN/DRY modes the temperature is meaningless
-    switch (mode) {
-        case 'off':
-        case 'fan':
-        case 'dry':
-            // `operating` is always false in these modes
-            events << [name: 'thermostatOperatingState', value: thermostatOperatingStateMapping[mode]]
-            state.remove("intermediateSetpoint")
-            clearRestoredSetpoint()
-            break
-        case 'cool':
+    if (payload.power == "OFF" || mode == "fan" || mode == "dry") {
+        // `operating` is always false in these modes
+        events << [name: 'thermostatOperatingState', value: thermostatOperatingStateMapping[mode]]
+        state.remove("intermediateSetpoint")
+        clearRestoredSetpoint()
+    }
+
+    if (rawMode == "cool") {
+        if (payload.power != "OFF") {
             // Override the setpoint reported by the heat pump while we're gradually adjusting
             if (state.intermediateSetpoint || state.restoredSetpoint) {
                 temperature = device.currentValue('coolingSetpoint')
             }
-            events << [name: 'coolingSetpoint', value: temperature, unit: getTemperatureUnit()]
-            events << [name: 'thermostatSetpoint', value: temperature, unit: getTemperatureUnit()]
-            updateRunningMode('cool')
-            break
-        case 'heat':
+            updateRunningMode(rawMode)
+        }
+        events << [name: 'coolingSetpoint', value: temperature, unit: getTemperatureUnit()]
+        events << [name: 'thermostatSetpoint', value: temperature, unit: getTemperatureUnit()]
+
+    } else if (rawMode == "heat") {
+        if (payload.power != "OFF") {
             // Override the setpoint reported by the heat pump while we're gradually adjusting
             if (state.intermediateSetpoint || state.restoredSetpoint) {
                 temperature = device.currentValue('heatingSetpoint')
             }
-            events << [name: 'heatingSetpoint', value: temperature, unit: getTemperatureUnit()]
-            events << [name: 'thermostatSetpoint', value: temperature, unit: getTemperatureUnit()]
-            updateRunningMode('heat')
-            break
-        default:
-            events << [name: 'thermostatSetpoint', value: temperature, unit: getTemperatureUnit()]
-            // TODO: read auto mode out of payload and set lastRunningMode
-            break
+            updateRunningMode(rawMode)
+        }
+        events << [name: 'heatingSetpoint', value: temperature, unit: getTemperatureUnit()]
+        events << [name: 'thermostatSetpoint', value: temperature, unit: getTemperatureUnit()]
+
+    } else if (payload.power != "OFF") {
+        events << [name: 'thermostatSetpoint', value: temperature, unit: getTemperatureUnit()]
+        // TODO: read auto mode out of payload and set lastRunningMode
     }
 
     return events
@@ -285,7 +287,6 @@ private static BigDecimal roundToHalf(BigDecimal temperature) {
 /* Commands */
 void auto() { setThermostatMode('auto') }
 void cool() {
-    sendEvent([name: 'thermostatOperatingState', value: 'pending cool'])
     setThermostatMode('cool')
 }
 void emergencyHeat() {
@@ -293,7 +294,6 @@ void emergencyHeat() {
     logDebug 'emergency heat not supported; falling back to heat'
 }
 void heat() {
-    sendEvent([name: 'thermostatOperatingState', value: 'pending heat'])
     setThermostatMode('heat')
 }
 void dry() { setThermostatMode('dry') }
@@ -334,10 +334,10 @@ private void debouncedSetSetpoint(Map map) {
                 ]
         )
         final String currentMode = device.currentValue('thermostatMode', true)
-        if (
-                ["pending ${thermostatMode}", thermostatMode].contains(currentMode) ||
-                        currentMode == 'auto' && getRunningMode() == thermostatMode // won't work until HeatPump sends x09 payload
+        if (currentMode == 'auto' && getRunningMode() != thermostatMode // won't work until HeatPump sends x09 payload
         ) {
+            logDebug "Not publishing ${thermostatMode}ingSetpoint to ${setpointC}"
+        } else {
             clearRestoredSetpoint()
             if (gradualAdjustment) {
                 BigDecimal currentTempC = convertInputToCelsius(device.currentValue('temperature'))
@@ -345,8 +345,6 @@ private void debouncedSetSetpoint(Map map) {
             } else {
                 publish(['temperature': setpointC.floatValue()])
             }
-        } else {
-            logDebug "Current mode is ${currentMode} so not publishing ${thermostatMode}ingSetpoint to ${setpointC}"
         }
     } else {
         String error = !setpointC ? "setpoint" : "thermostatMode"
@@ -453,6 +451,9 @@ void setThermostatMode(String mode) {
                 'mode': mappedMode,
                 'temperature': setpointC.floatValue()
             ]))
+            if (mappedMode != 'auto') {
+                sendEvent([name: 'thermostatOperatingState', value: 'pending ' + mode])
+            }
             break
         case 'fan':
         case 'dry':
